@@ -11,11 +11,16 @@ from pathlib import Path
 from airflow.exceptions import AirflowConfigException, AirflowFailException
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import PythonOperator
-from airflow.sdk import DAG, Param, TaskGroup, chain
+from airflow.sdk import DAG, TaskGroup, chain
 from airflow.task.trigger_rule import TriggerRule
 
 from dags.shared.task_groups.captioning import CaptioningTaskGroup
 from dags.shared.task_groups.cosmos import CosmosTaskGroup
+from dags.shared.task_groups.cosmos_evaluator import (
+    ATTRIBUTE_VERIFICATION_CHECKER,
+    PHYSICAL_PLAUSIBILITY_CHECKER,
+    CosmosEvaluatorTaskGroup,
+)
 from dags.shared.task_groups.detection_and_tracking import DetectionAndTrackingTaskGroup
 from dags.shared.task_groups.event_and_person_attribute_search import (
     EventAndPersonAttributeSearchTaskGroup,
@@ -31,6 +36,7 @@ from dags.shared.task_groups.validated_output import ValidatedOutputTaskGroup
 from dags.shared.task_groups.visual_qa import VisualQATaskGroup
 from dags.shared.utils.component_builder import ComponentBuilder
 from dags.shared.utils.dag_utils import (
+    model_payload_param,
     on_failure_callback,
     on_success_callback,
     resolve_dag_timeout,
@@ -48,7 +54,9 @@ from dags.workflows.event_video_generation_dag.callables import (
     validate_event_video_generation_cosmos_outputs,
     validate_event_video_generation_pipeline_outputs,
 )
-from dags.workflows.event_video_generation_dag.models import EventVideoGenerationDagPayloadConfig
+from dags.workflows.event_video_generation_dag.models import (
+    EventVideoGenerationDagPayloadConfig,
+)
 from dags.workflows.event_video_generation_dag.tasks import (
     generate_event_video_generation_performance_report,
 )
@@ -56,9 +64,15 @@ from dags.workflows.event_video_generation_dag.tasks import (
 logger = logging.getLogger(__name__)
 
 EVENT_VIDEO_GENERATION_CONFIG_DIR = Path(__file__).resolve().parent / "configs"
+EVENT_VIDEO_GENERATION_COSMOS_EVALUATOR_CONFIG_PATH = (
+    EVENT_VIDEO_GENERATION_CONFIG_DIR / "cosmos_evaluator_config.yaml"
+)
+EVENT_VIDEO_GENERATION_COSMOS_EVALUATOR_CHECKERS = (
+    ATTRIBUTE_VERIFICATION_CHECKER,
+    PHYSICAL_PLAUSIBILITY_CHECKER,
+)
 EVENT_VIDEO_GENERATION_SERVICE_SPECS = (
     ServiceLifecycleSpec("vlm_service", "wait_for_vlm"),
-    ServiceLifecycleSpec("llm_service", "wait_for_llm"),
     ServiceLifecycleSpec("image2video_service", "wait_for_image2video"),
 )
 
@@ -74,10 +88,16 @@ VALIDATED_OUTPUT_TASK_ID = "validated_output.validate_outputs"
 class EventVideoGenerationDAGBuilder:
     """Builder class for Event Video Generation DAGs."""
 
-    def __init__(self, manifest_path: str | Path, logging_level: str = "INFO"):
+    def __init__(
+        self,
+        manifest_path: str | Path,
+        logging_level: str = "INFO",
+        use_external_cosmos_evaluator: bool = False,
+    ):
         logging_level = os.environ.get("LOGGING_LEVEL", logging_level)
         logger.setLevel(getattr(logging, logging_level.upper(), logging.INFO))
         self.manifest_path = str(manifest_path)
+        self.use_external_cosmos_evaluator = use_external_cosmos_evaluator
 
         try:
             self.builder = ComponentBuilder(manifest_path=self.manifest_path)
@@ -107,7 +127,10 @@ class EventVideoGenerationDAGBuilder:
 
         with DAG(
             dag_id=dag_id,
-            default_args={"owner": "NVIDIA", "depends_on_past": False},
+            default_args={
+                "owner": "NVIDIA",
+                "depends_on_past": False,
+            },
             description=description,
             start_date=datetime(2026, 1, 1),
             dagrun_timeout=dagrun_timeout,
@@ -115,15 +138,14 @@ class EventVideoGenerationDAGBuilder:
             catchup=False,
             tags=tags or ["sdg", "event_video_generation"],
             params={
-                "payload": Param(
-                    default=EventVideoGenerationDagPayloadConfig().model_dump(),
-                    schema=EventVideoGenerationDagPayloadConfig.model_json_schema(),
-                    type="object",
+                "payload": model_payload_param(
+                    EventVideoGenerationDagPayloadConfig,
+                    EventVideoGenerationDagPayloadConfig().model_dump(),
                 ),
             },
             on_success_callback=on_success_callback,
             on_failure_callback=on_failure_callback,
-            max_active_runs=1,
+            max_active_runs=5,
         ) as dag:
             validate_payload = ValidatePayloadTaskGroup(
                 model_class=EventVideoGenerationDagPayloadConfig
@@ -137,29 +159,62 @@ class EventVideoGenerationDAGBuilder:
                 builder=self.builder,
                 service_lifecycle_config="{{ (ti.xcom_pull(task_ids='validate_payload', key='return_value') or {}).get('service_lifecycle', {}) | tojson }}",
                 service_specs=EVENT_VIDEO_GENERATION_SERVICE_SPECS,
+                shutdown_group_id=None,
             )
             wait_tasks = service_lifecycle.get_wait_for_services_tasks()
             wait_for_vlm = wait_tasks["vlm_service"]
-            wait_for_llm = wait_tasks["llm_service"]
             wait_for_image2video = wait_tasks["image2video_service"]
             startup_tasks = service_lifecycle.get_service_startup_task_group()
             service_lifecycle.get_service_shutdown_task_group()
-            shutdown_image2video = dag.get_task(
-                service_lifecycle.shutdown_xcom_task_id("image2video_service")
+            shutdown_image2video_id = service_lifecycle.shutdown_xcom_task_id("image2video_service")
+            shutdown_image2video = (
+                dag.get_task(shutdown_image2video_id)
+                if dag.has_task(shutdown_image2video_id)
+                else None
             )
             late_shutdown_tasks = [
-                dag.get_task(service_lifecycle.shutdown_xcom_task_id("vlm_service")),
-                dag.get_task(service_lifecycle.shutdown_xcom_task_id("llm_service")),
+                dag.get_task(service_lifecycle.shutdown_xcom_task_id(component_key))
+                for component_key in ("vlm_service",)
+                if dag.has_task(service_lifecycle.shutdown_xcom_task_id(component_key))
             ]
             services_ready = EmptyOperator(task_id="services_ready")
+
+            wait_for_cosmos_evaluator = None
+            cosmos_evaluator_shutdown = None
+            cosmos_evaluator_failure_tasks = []
+            if CosmosEvaluatorTaskGroup.is_supported(
+                self.builder,
+                checker_names=EVENT_VIDEO_GENERATION_COSMOS_EVALUATOR_CHECKERS,
+            ):
+                cosmos_evaluator_task_group = CosmosEvaluatorTaskGroup(
+                    builder=self.builder,
+                    default_config_path=EVENT_VIDEO_GENERATION_COSMOS_EVALUATOR_CONFIG_PATH,
+                    checker_names=EVENT_VIDEO_GENERATION_COSMOS_EVALUATOR_CHECKERS,
+                )
+                wait_for_cosmos_evaluator = cosmos_evaluator_task_group.get_startup_task_group()
+                cosmos_evaluator_failure_tasks = [
+                    task
+                    for task in wait_for_cosmos_evaluator.children.values()
+                    if not isinstance(task, EmptyOperator)
+                ]
+                cosmos_evaluator_shutdown = cosmos_evaluator_task_group.get_shutdown_task_group()
 
             cosmos_augmentation = CosmosTaskGroup(
                 builder=self.builder,
                 config_generation_callable=generate_event_video_generation_cosmos_configs,
                 output_validation_callable=validate_event_video_generation_cosmos_outputs,
                 task_config="{{ (ti.xcom_pull(task_ids='validate_payload', key='return_value') or {}).get('cosmos', {}) }}",
-                internal_augmentation_pool="internal_image2video_service_pool",
                 external_augmentation_pool="external_image2video_service_pool",
+                config_generation_op_kwargs={
+                    "default_config_path": str(
+                        EVENT_VIDEO_GENERATION_COSMOS_EVALUATOR_CONFIG_PATH
+                        if (
+                            wait_for_cosmos_evaluator is not None
+                            or self.use_external_cosmos_evaluator
+                        )
+                        else EVENT_VIDEO_GENERATION_CONFIG_DIR / "cosmos_config.yaml"
+                    )
+                },
             ).get_cosmos_augmentation_task_group()
 
             annotation_payload = (
@@ -268,20 +323,24 @@ class EventVideoGenerationDAGBuilder:
 
             validate_payload >> input_preparation
             input_preparation >> startup_tasks
-            validate_payload >> [wait_for_vlm, wait_for_llm, wait_for_image2video]
+            validate_payload >> [wait_for_vlm, wait_for_image2video]
+            if wait_for_cosmos_evaluator is not None:
+                input_preparation >> wait_for_cosmos_evaluator
             for task in [
                 input_preparation,
                 wait_for_vlm,
-                wait_for_llm,
                 wait_for_image2video,
             ]:
                 task >> services_ready
+            if wait_for_cosmos_evaluator is not None:
+                wait_for_cosmos_evaluator >> services_ready
             services_ready >> cosmos_augmentation
             # Tear down image2video after Cosmos so autolabeling can reuse its GPUs.
-            # Chain the shutdown task itself, not the service_shutdown TaskGroup, so
-            # VLM/LLM cleanup is not pulled forward (and autolabeling does not cycle).
-            cosmos_augmentation >> shutdown_image2video
-            shutdown_image2video >> auto_labeling_group
+            # Keep cleanup tasks independent so VLM cleanup is not pulled forward.
+            # OSMO manifests omit internal endpoints, so this edge is optional.
+            if shutdown_image2video is not None:
+                cosmos_augmentation >> shutdown_image2video
+                shutdown_image2video >> auto_labeling_group
             chain(
                 cosmos_augmentation,
                 auto_labeling_group,
@@ -293,12 +352,19 @@ class EventVideoGenerationDAGBuilder:
                 fail_pipeline,
                 pipeline_success,
             ]
+            for task in cosmos_evaluator_failure_tasks:
+                task >> fail_pipeline
+            if cosmos_evaluator_shutdown is not None:
+                cosmos_augmentation >> cosmos_evaluator_shutdown
+                validated_output >> cosmos_evaluator_shutdown
+                fail_pipeline >> cosmos_evaluator_shutdown
+                # The failure gate can finish before a delayed evaluator deploy.
+                list(wait_for_cosmos_evaluator.children.values()) >> cosmos_evaluator_shutdown
 
             gate_upstreams = [
                 validate_payload,
                 input_preparation,
                 wait_for_vlm,
-                wait_for_llm,
                 wait_for_image2video,
                 detection_and_tracking,
                 captioning,
@@ -310,7 +376,8 @@ class EventVideoGenerationDAGBuilder:
             ]
             for task in gate_upstreams:
                 task >> [fail_pipeline, pipeline_success]
-                task >> late_shutdown_tasks
+                if late_shutdown_tasks:
+                    task >> late_shutdown_tasks
 
         return dag
 
@@ -331,7 +398,10 @@ def _create_event_video_generation_dag_if_manifest_exists(
         return None
 
     try:
-        return EventVideoGenerationDAGBuilder(manifest_path=manifest_path).build_dag(
+        return EventVideoGenerationDAGBuilder(
+            manifest_path=manifest_path,
+            use_external_cosmos_evaluator=platform == "osmo",
+        ).build_dag(
             dag_id=f"event_video_generation_dag_{platform}",
             description=description,
             tags=tags,
@@ -360,4 +430,15 @@ event_video_generation_dag_k8s = _create_event_video_generation_dag_if_manifest_
     platform="k8s",
     description="Run the Event Video Generation workflow on Native Kubernetes",
     tags=["sdg", "kubernetes", "event_video_generation"],
+)
+
+_EVENT_VIDEO_GENERATION_OSMO_MANIFEST = os.environ.get(
+    "EVENT_VIDEO_GENERATION_OSMO_MANIFEST_PATH",
+    EVENT_VIDEO_GENERATION_CONFIG_DIR / "event_video_generation_osmo_manifest.yaml",
+)
+event_video_generation_dag_osmo = _create_event_video_generation_dag_if_manifest_exists(
+    manifest_path=_EVENT_VIDEO_GENERATION_OSMO_MANIFEST,
+    platform="osmo",
+    description="Run the Event Video Generation workflow on OSMO",
+    tags=["sdg", "osmo", "event_video_generation"],
 )

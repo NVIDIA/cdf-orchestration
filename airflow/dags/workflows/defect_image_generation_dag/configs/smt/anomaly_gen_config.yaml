@@ -1,0 +1,41 @@
+# SMT UC1 defaults. Model routing, defect selection and staging locations are supplied in the payload.
+# Full mode stages a batch of augmented component images in the configured class folder.
+# Defect-only mode uses the prepared dataset supplied in staging.fetch.input.
+input: /work/dataset
+output: /work/output
+recipe: /work/recipe.yaml
+checkpoint: /work/model.pt
+base_checkpoint: null
+
+# Counts are passed through to the component.
+# Full mode publishes one selected export per input that produced an output.
+# Defect-only mode publishes all exports.
+num_sdg: 1
+per_defect_counts: null
+mode: inference
+amp_per_clean_pairing: "off"
+output_naming: indexed
+
+base_seed: 1
+num_gpus: 1
+num_search_run: 3
+guidance: null
+num_steps: null
+crop_ratio: null
+guardrail: true
+
+amg_serve: null
+amg_gen_model: null
+amg_judge_model: null
+amg_model_registry: null
+
+stages: [prepare, amg, generate, export, publish]
+
+staging:
+  fetch:
+    input:
+      - s3://<bucket-name>/path/to/assets/UC1/
+    recipe: s3://<bucket-name>/path/to/recipe/exp_texture_ft_pcb.yaml
+    checkpoint: s3://<bucket-name>/path/to/finetuned/UC1/iter_000015000.pt
+  publish:
+    output: null

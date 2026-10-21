@@ -41,6 +41,12 @@ DEFAULT_OUTPUT_JSON = "augmented_data.json"
 PERSON_ATTRIBUTE_SEARCH_CONFIG_RELATIVE_PATH = (
     "sidecars/person_attribute_search/assets/event_and_person_attribute_search_config.yaml"
 )
+SCENE_DIRECTORY_PATH_FORMATS = {
+    "raw": "{scene_path}/raw/",
+    "contextual": "{scene_path}/contextual/",
+    "task": "{scene_path}/task/",
+    "sidecars": "{scene_path}/sidecars/",
+}
 
 
 def join_storage_paths(base_path: str, *parts: str) -> str:
@@ -254,6 +260,27 @@ def build_entry(
     augmented_key = f"{person_key}_aug{augmentation_index}"
     scene_path = get_dataset_scene_dir(dataset_dir, person_key, augmentation_index)
     selected_attributes = {normalize_attribute_key(key): value for key, value in selections.items()}
+    paths = {
+        "config": join_storage_base_path_filename(
+            scene_path, PERSON_ATTRIBUTE_SEARCH_CONFIG_RELATIVE_PATH
+        )
+    }
+    for dirname in SCENE_DIRECTORY_PATH_FORMATS:
+        directory_path = join_storage_base_path_filename(scene_path, dirname)
+        if _prefix_has_objects(directory_path):
+            paths[dirname] = directory_path
+
+    attribute_verification = output_metadata.get("attribute_verification", {})
+    evaluator = output_metadata.get("cosmos_evaluator")
+    if not attribute_verification and isinstance(evaluator, dict):
+        stream_key = evaluator.get("stream_key")
+        checks = evaluator.get("checks")
+        checker_result = (
+            checks.get("metropolis.attribute_verification") if isinstance(checks, dict) else None
+        )
+        stream_result = checker_result.get(stream_key) if isinstance(checker_result, dict) else None
+        if isinstance(stream_result, dict):
+            attribute_verification = stream_result
 
     return {
         "person_key": augmented_key,
@@ -263,18 +290,10 @@ def build_entry(
         "augmentation_index": augmentation_index,
         "scene_path": scene_path,
         "auto_labeling_source_path": auto_labeling_source_dir,
-        "paths": {
-            "config": join_storage_base_path_filename(
-                scene_path, PERSON_ATTRIBUTE_SEARCH_CONFIG_RELATIVE_PATH
-            ),
-            "raw": join_storage_base_path_filename(scene_path, "raw"),
-            "contextual": join_storage_base_path_filename(scene_path, "contextual"),
-            "task": join_storage_base_path_filename(scene_path, "task"),
-            "sidecars": join_storage_base_path_filename(scene_path, "sidecars"),
-        },
+        "paths": paths,
         "selected_attributes": selected_attributes,
         "queries": build_queries(selected_attributes),
-        "attribute_verification": output_metadata.get("attribute_verification", {}),
+        "attribute_verification": attribute_verification,
     }
 
 
@@ -284,6 +303,20 @@ def compute_metadata(
     skipped_augmentations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     source_ids = {entry["source_person_key"] for entry in entries}
+    populated_path_keys = {
+        key
+        for entry in entries
+        for key in entry.get("paths", {})
+        if key in SCENE_DIRECTORY_PATH_FORMATS
+    }
+    path_format = {
+        "config": ("{scene_path}/" + PERSON_ATTRIBUTE_SEARCH_CONFIG_RELATIVE_PATH),
+        **{
+            key: path_template
+            for key, path_template in SCENE_DIRECTORY_PATH_FORMATS.items()
+            if key in populated_path_keys
+        },
+    }
 
     return {
         "description": "Image Attribute Augmentation auto-labeling dataset from augmented inputs",
@@ -292,13 +325,7 @@ def compute_metadata(
         "total_scenes": len(entries),
         "skipped_augmentations": skipped_augmentations or [],
         "scene_structure": f"{dataset_dir}/{{person_key}}_aug{{augmentation_index}}/",
-        "path_format": {
-            "config": ("{scene_path}/" + PERSON_ATTRIBUTE_SEARCH_CONFIG_RELATIVE_PATH),
-            "raw": "{scene_path}/raw/",
-            "contextual": "{scene_path}/contextual/",
-            "task": "{scene_path}/task/",
-            "sidecars": "{scene_path}/sidecars/",
-        },
+        "path_format": path_format,
         "query_format": {
             "levels": ["easy", "medium", "hard"],
             "description": "Queries are built from selected augmentation attributes",

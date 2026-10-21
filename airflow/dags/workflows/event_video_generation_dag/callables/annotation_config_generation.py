@@ -9,7 +9,6 @@ import ast
 import copy
 import json
 import shlex
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +16,14 @@ import yaml
 from airflow.exceptions import AirflowFailException
 from yarl import URL
 
-from dags.shared.models import StoragePathListXcom
 from dags.shared.models.payload import DEFAULT_OPENAI_COMPATIBLE_PROVIDER
 from dags.shared.task_groups.service_lifecycle import require_service_endpoint_from_xcom
 from dags.shared.utils.msc_utils import convert_msc_to_storage_url, write_file_to_directory
 from dags.shared.utils.xcom import pull_and_validate_xcom
-from dags.workflows.event_video_generation_dag.models import EventVideoGenerationDagPayloadConfig
+from dags.workflows.event_video_generation_dag.models import (
+    EventVideoGenerationAugmentationOutputResult,
+    EventVideoGenerationDagPayloadConfig,
+)
 
 EVENT_VIDEO_GENERATION_CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 ANOMALY_QUESTION_BANK_PATH = EVENT_VIDEO_GENERATION_CONFIG_DIR / "question_bank.anomaly_tags.json"
@@ -154,18 +155,15 @@ def _inputs_with_data_paths(
         ti=ti,
         task_id=input_xcom_task_id,
         key=input_xcom_key,
-        model_class=StoragePathListXcom,
+        model_class=EventVideoGenerationAugmentationOutputResult,
     )
     output_base = str(URL(payload.output_directory) / run_id / (output_group_id or group_id))
-    per_key_index: defaultdict[str, int] = defaultdict(int)
     resolved = []
-    for video in inputs.videos:
-        index = per_key_index[video.video_key]
-        per_key_index[video.video_key] += 1
+    for augmentation in inputs.augmentations:
         resolved.append(
             (
-                convert_msc_to_storage_url(video.video_path),
-                f"{output_base}/{video.video_key}/{index}",
+                convert_msc_to_storage_url(augmentation.video_path),
+                f"{output_base}/{augmentation.input_key}/{augmentation.augmentation_index}",
             )
         )
     return resolved
@@ -180,7 +178,13 @@ def _vlm_endpoint(payload: EventVideoGenerationDagPayloadConfig, ti: Any) -> str
 def _llm_endpoint(payload: EventVideoGenerationDagPayloadConfig, ti: Any) -> str:
     if payload.external_services:
         return payload.cosmos.llm_service_url or ""
-    return require_service_endpoint_from_xcom(ti, "llm_service")
+    return require_service_endpoint_from_xcom(ti, "vlm_service")
+
+
+def _llm_model(payload: EventVideoGenerationDagPayloadConfig) -> str:
+    if payload.external_services:
+        return payload.cosmos.llm_model
+    return payload.cosmos.vlm_model
 
 
 def _load_asset(path: Path, description: str) -> bytes:
@@ -377,7 +381,7 @@ def prepare_event_video_generation_person_attribute_search_configs(
             configured.update(
                 {
                     "llm_endpoint_url": llm_endpoint,
-                    "llm_model": payload.cosmos.llm_model,
+                    "llm_model": _llm_model(payload),
                 }
             )
             write_file_to_directory(
@@ -392,7 +396,7 @@ def prepare_event_video_generation_person_attribute_search_configs(
                     "--llm-endpoint-url",
                     _quote(llm_endpoint),
                     "--llm-model",
-                    _quote(payload.cosmos.llm_model),
+                    _quote(_llm_model(payload)),
                 ]
             )
             commands.append(" ".join(args))

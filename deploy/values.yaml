@@ -59,31 +59,20 @@ postgresql:
             WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'airflow')\gexec
             GRANT ALL PRIVILEGES ON DATABASE airflow TO $POSTGRES_USER;
           EOSQL
-          
+
           # Create sdg_workflow database if it doesn't exist
           psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "postgres" <<-EOSQL
             SELECT 'CREATE DATABASE sdg_workflow'
             WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sdg_workflow')\gexec
             GRANT ALL PRIVILEGES ON DATABASE sdg_workflow TO $POSTGRES_USER;
           EOSQL
-          
+
           echo "Databases created successfully!"
           echo "- airflow"
           echo "- sdg_workflow"
 
 global:
-  s3Sync:
-    image: public.ecr.aws/aws-cli/aws-cli:latest
-    intervalSeconds: 30
   dags:
-    enabled: true
-    source: s3
-    hostPath: ""
-    persistence:
-      size: 1Gi
-      accessMode: ReadWriteMany
-      storageClassName: nfs
-      claimName: sdg-workflow-controller-dags
     podTemplate:
       resources:
         requests:
@@ -92,22 +81,6 @@ global:
         limits:
           cpu: 1000m
           memory: 1Gi
-  plugins:
-    enabled: false
-    hostPath: ""
-    persistence:
-      size: 1Gi
-      accessMode: ReadWriteMany
-      storageClassName: nfs
-      claimName: sdg-workflow-controller-plugins
-  pythonDependencies:
-    enabled: false
-    hostPath: ""
-    persistence:
-      size: 5Gi
-      accessMode: ReadWriteMany
-      storageClassName: nfs
-      claimName: sdg-workflow-controller-python-deps
   modelCache:
     enabled: true
     claimName: ngc-model-cache
@@ -115,126 +88,19 @@ global:
     accessMode: ReadWriteMany
     storageClassName: nfs
 
-x-s3-sync-env: &s3SyncEnv
-  - name: AWS_ACCESS_KEY_ID
-    valueFrom:
-      secretKeyRef:
-        name: aws-credentials-secret
-        key: aws_s3_dag_access_key_id
-  - name: AWS_SECRET_ACCESS_KEY
-    valueFrom:
-      secretKeyRef:
-        name: aws-credentials-secret
-        key: aws_s3_dag_secret_access_key
-  - name: AWS_DEFAULT_REGION
-    valueFrom:
-      secretKeyRef:
-        name: aws-credentials-secret
-        key: aws_s3_dag_region
-  - name: AIRFLOW_DAGS_S3_URI
-    valueFrom:
-      configMapKeyRef:
-        name: sdg-workflow-controller-s3-sync
-        key: dags_uri
-  - name: AIRFLOW_PYTHON_DEPS_S3_URI
-    valueFrom:
-      configMapKeyRef:
-        name: sdg-workflow-controller-s3-sync
-        key: python_dependencies_uri
-  - name: AIRFLOW_PLUGINS_S3_URI
-    valueFrom:
-      configMapKeyRef:
-        name: sdg-workflow-controller-s3-sync
-        key: plugins_uri
-
-x-s3-sync-init-containers: &s3SyncInitContainers
-  - name: sync-dags-from-s3
-    image: public.ecr.aws/aws-cli/aws-cli:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - aws s3 sync "$AIRFLOW_DAGS_S3_URI" /opt/airflow/dags/ --delete
-    env: *s3SyncEnv
-    volumeMounts:
-      - name: s3-dags
-        mountPath: /opt/airflow/dags
-  - name: sync-python-deps-from-s3
-    image: public.ecr.aws/aws-cli/aws-cli:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - aws s3 sync "$AIRFLOW_PYTHON_DEPS_S3_URI" /opt/airflow/python-deps/ --delete
-    env: *s3SyncEnv
-    volumeMounts:
-      - name: s3-python-deps
-        mountPath: /opt/airflow/python-deps
-  - name: sync-plugins-from-s3
-    image: public.ecr.aws/aws-cli/aws-cli:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - aws s3 sync "$AIRFLOW_PLUGINS_S3_URI" /opt/airflow/plugins/ --delete
-    env: *s3SyncEnv
-    volumeMounts:
-      - name: s3-plugins
-        mountPath: /opt/airflow/plugins
-
-x-s3-sync-sidecars: &s3SyncSidecars
-  - name: sync-dags-from-s3-loop
-    image: public.ecr.aws/aws-cli/aws-cli:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - while true; do aws s3 sync "$AIRFLOW_DAGS_S3_URI" /opt/airflow/dags/ --delete; sleep 30; done
-    env: *s3SyncEnv
-    volumeMounts:
-      - name: s3-dags
-        mountPath: /opt/airflow/dags
-  - name: sync-python-deps-from-s3-loop
-    image: public.ecr.aws/aws-cli/aws-cli:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - while true; do aws s3 sync "$AIRFLOW_PYTHON_DEPS_S3_URI" /opt/airflow/python-deps/ --delete; sleep 30; done
-    env: *s3SyncEnv
-    volumeMounts:
-      - name: s3-python-deps
-        mountPath: /opt/airflow/python-deps
-  - name: sync-plugins-from-s3-loop
-    image: public.ecr.aws/aws-cli/aws-cli:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - while true; do aws s3 sync "$AIRFLOW_PLUGINS_S3_URI" /opt/airflow/plugins/ --delete; sleep 30; done
-    env: *s3SyncEnv
-    volumeMounts:
-      - name: s3-plugins
-        mountPath: /opt/airflow/plugins
-
-x-s3-sync-volumes: &s3SyncVolumes
-  - name: s3-dags
-    persistentVolumeClaim:
-      claimName: sdg-workflow-controller-dags
-  - name: s3-python-deps
-    persistentVolumeClaim:
-      claimName: sdg-workflow-controller-python-deps
-  - name: s3-plugins
-    persistentVolumeClaim:
-      claimName: sdg-workflow-controller-plugins
-
-x-s3-sync-volume-mounts: &s3SyncVolumeMounts
-  - name: s3-dags
-    mountPath: /opt/airflow/dags
-  - name: s3-python-deps
-    mountPath: /opt/airflow/python-deps
-  - name: s3-plugins
-    mountPath: /opt/airflow/plugins
 airflow:
   # Override fullname so services are named sdg-workflow-controller-*
   # (e.g. sdg-workflow-controller-api-server, sdg-workflow-controller-scheduler)
   fullnameOverride: "sdg-workflow-controller"
-  airflowVersion: "3.1.7"
+  airflowVersion: "3.3.2"
 
-  # Image configuration
-  defaultAirflowRepository: apache/airflow
-  defaultAirflowTag: 3.1.7-python3.11
+  # Image configuration — DAGs, plugins, and runtime extras are baked in
+  # Placeholder; `make build sdg-controller` writes the published repository and tag here.
+  defaultAirflowRepository: nvcr.io/<your-org>/<your-team>/sdg-workflow-airflow
+  defaultAirflowTag: airflow-3.3.2
   images:
     airflow:
-      pullPolicy: IfNotPresent
+      pullPolicy: Always
   imagePullSecrets:
     - name: ngc-docker-registry-secret
 
@@ -242,12 +108,10 @@ airflow:
 
   # Environment variables for all airflow containers
   env:
-    # Config paths - modify these to switch between different config files
-    # Configs are loaded from DAG storage.
     - name: LOGGING_LEVEL
       value: "INFO"
     - name: PYTHONPATH
-      value: "/opt/airflow:/opt/airflow/python-deps:/opt/airflow/plugins:/opt/airflow/dags"
+      value: "/opt/airflow:/opt/airflow/plugins:/opt/airflow/dags"
 
   # Inject Airflow connections and variables from k8s secrets as env vars.
   # AIRFLOW_CONN_* sets connections, AIRFLOW_VAR_* sets variables.
@@ -255,12 +119,15 @@ airflow:
     - envName: "AIRFLOW_CONN_NVCF_DEFAULT"
       secretName: "nvcf-connection-secret"
       secretKey: "connection"
+    - envName: "AIRFLOW_VAR_VLM_API_KEY"
+      secretName: "model-api-keys-secret"
+      secretKey: "vlm_api_key"
+    - envName: "AIRFLOW_VAR_LLM_API_KEY"
+      secretName: "model-api-keys-secret"
+      secretKey: "llm_api_key"
     - envName: "AIRFLOW_CONN_KUBERNETES_REMOTE"
       secretName: "kubernetes-remote-connection-secret"
       secretKey: "connection"
-    # Lets task pods read their own run's timings back from the REST API for performance
-    # reporting. Task pods have no metadata-database access and their execution-API token
-    # does not cover task instances, so this is the only route to per-task durations.
     - envName: "AIRFLOW_CONN_AIRFLOW_API_DEFAULT"
       secretName: "airflow-api-connection-secret"
       secretKey: "connection"
@@ -270,9 +137,33 @@ airflow:
     - envName: "AIRFLOW_VAR_NGC_API_KEY"
       secretName: "ngc-api-key-secret"
       secretKey: "ngc_api_key"
+    - envName: "AIRFLOW_VAR_AWS_ACCESS_KEY_ID"
+      secretName: "aws-credentials-secret"
+      secretKey: "aws_access_key_id"
+    - envName: "AIRFLOW_VAR_AWS_SECRET_ACCESS_KEY"
+      secretName: "aws-credentials-secret"
+      secretKey: "aws_secret_access_key"
+    - envName: "AIRFLOW_VAR_AWS_REGION"
+      secretName: "aws-credentials-secret"
+      secretKey: "aws_region"
+    - envName: "AIRFLOW_VAR_AWS_BUCKET"
+      secretName: "aws-credentials-secret"
+      secretKey: "aws_bucket"
     - envName: "AIRFLOW_VAR_MULTISTORAGECLIENT_CONFIGURATION_SECRET"
       secretName: "multistorageclient-configuration-secret"
       secretKey: "multistorageclient_configuration_secret"
+    - envName: "AIRFLOW_VAR_OSMO_TOKEN"
+      secretName: "osmo-token-secret"
+      secretKey: "osmo_token"
+    - envName: "AIRFLOW_VAR_OSMO_URL"
+      secretName: "osmo-token-secret"
+      secretKey: "osmo_url"
+    - envName: "AIRFLOW_VAR_OSMO_POOL"
+      secretName: "osmo-token-secret"
+      secretKey: "osmo_pool"
+    - envName: "AIRFLOW_VAR_OSMO_HF_CACHE_SEED_DIR"
+      secretName: "osmo-token-secret"
+      secretKey: "osmo_hf_cache_seed_dir"
 
   # Airflow config overrides (merged with chart defaults via config.section.key)
   config:
@@ -282,7 +173,7 @@ airflow:
       max_active_tasks_per_dag: "128"
       max_active_runs_per_dag: "64"
       max_map_length: "2048" # default is 1024
-      dagbag_import_timeout: "30"
+      dagbag_import_timeout: "300"
     webserver:
       expose_config: "True"
     scheduler:
@@ -325,7 +216,7 @@ airflow:
     useHelmHooks: false
     applyCustomEnv: false
 
-  # DAGs are synced from S3 into pod-local volumes.
+  # DAGs and plugins are baked into the Airflow image.
   dags:
     persistence:
       enabled: false
@@ -340,6 +231,11 @@ airflow:
   # Enabled via Terraform override (airflow.apiServer.enabled=true)
   apiServer:
     replicas: 1
+    # Use consistent alphabetical ordering for tasks and groups across all DAGs.
+    # Display ordering is independent of dependencies; execution order is unchanged.
+    env:
+      - name: AIRFLOW__API__GRID_VIEW_SORTING_ORDER
+        value: hierarchical_alphabetical
     # Recreate avoids running old+new pods simultaneously, which would exceed
     # the 2-node cluster's CPU capacity during rolling upgrades.
     strategy:
@@ -351,13 +247,6 @@ airflow:
       periodSeconds: 10
       timeoutSeconds: 20
       failureThreshold: 24
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: 1000m
-        memory: 1Gi
 
   # Scheduler
   scheduler:
@@ -403,10 +292,6 @@ airflow:
       rollingUpdate:
         maxSurge: 100%
         maxUnavailable: 100%
-    extraInitContainers: *s3SyncInitContainers
-    extraContainers: *s3SyncSidecars
-    extraVolumes: *s3SyncVolumes
-    extraVolumeMounts: *s3SyncVolumeMounts
 
   triggerer:
     enabled: true
@@ -416,8 +301,6 @@ airflow:
       periodSeconds: 30
       timeoutSeconds: 60
       failureThreshold: 10
-    extraVolumes: *s3SyncVolumes
-    extraVolumeMounts: *s3SyncVolumeMounts
 
   # Flower (disabled - using KubernetesExecutor, not Celery)
   flower:
@@ -463,22 +346,25 @@ k8sOperators:
 airflowPools:
   enabled: true
   pools:
-    - name: "k8s_gpu_1"
-      slots: 8
-      description: "K8s H100 tasks and endpoints"
+    k8s_rtx6000_1:
+      slots: 96
+      description: "K8s RTX PRO 6000 Blackwell tasks and endpoints (12 nodes x 8 GPUs)"
       includeDeferred: true
-    - name: "iaa_internal_image_edit_service_pool"
-      slots: 2
-      description: "Image Attribute Augmentation internal image-edit service pool"
+    osmo_h100_1:
+      slots: 75
+      description: "1x H100 OSMO tasks"
       includeDeferred: true
-    - name: "external_image_edit_service_pool"
-      slots: 20
-      description: "External image-edit service pool"
-    - name: "internal_image2video_service_pool"
-      slots: 2
-      description: "Internal image-to-video service pool"
+    osmo_rtx6000_1:
+      slots: 50
+      description: "1x RTX 6000 OSMO tasks"
       includeDeferred: true
-    - name: "external_image2video_service_pool"
+    cosmos_transfer_3_service_pool:
       slots: 1
+      description: "Tasks calling an externally supplied Cosmos Transfer 3 service"
+      includeDeferred: true
+    external_image_edit_service_pool:
+      slots: 30
+      description: "External image-edit service pool"
+    external_image2video_service_pool:
+      slots: 10
       description: "External image-to-video service pool"
-

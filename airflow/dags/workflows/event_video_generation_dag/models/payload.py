@@ -6,9 +6,15 @@
 import logging
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from dags.shared.models import ServiceLifecycleServiceConfig, ServiceLifecycleTaskConfig
+from dags.shared.models import (
+    ATTRIBUTE_VERIFICATION_CHECKER,
+    PHYSICAL_PLAUSIBILITY_CHECKER,
+    CosmosEvaluatorCheckerOverrides,
+    ServiceLifecycleServiceConfig,
+    validate_checker_override_names,
+)
 from dags.shared.models.payload import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_SERVICE_URL,
@@ -22,8 +28,8 @@ logger = logging.getLogger(__name__)
 # Placeholders, not real data locations or endpoints: every run must override them from
 # the payload. They keep this model constructible without arguments so the DAG can render
 # its Param default at parse time.
-DEFAULT_INPUT_PATH = "s3://<your-input-bucket>/<your-workflow>/input"
-DEFAULT_OUTPUT_DIRECTORY = "s3://<your-output-bucket>/<your-workflow>/output"
+DEFAULT_INPUT_PATH = "s3://<your-input-bucket>/<your-workflow>"
+DEFAULT_OUTPUT_DIRECTORY = "s3://<your-output-bucket>/<your-workflow>"
 DEFAULT_IMAGE2VIDEO_SERVICE_URL = "https://<your-image2video-endpoint>/v1"
 DEFAULT_IMAGE2VIDEO_MODEL = "nvidia/Cosmos3-Super-Image2Video"
 
@@ -68,6 +74,14 @@ class EventVideoGenerationCosmosTaskConfig(BaseModel):
     vlm_service_url: Optional[str] = Field(default=DEFAULT_VLM_SERVICE_URL)
     llm_service_url: Optional[str] = Field(default=DEFAULT_LLM_SERVICE_URL)
     image2video_service_url: Optional[str] = Field(default=DEFAULT_IMAGE2VIDEO_SERVICE_URL)
+    cosmos_evaluator_service_url: Optional[str] = Field(
+        default=None,
+        description="Direct root URL for an external Cosmos Evaluator Arbitrator service.",
+    )
+    checker_overrides: CosmosEvaluatorCheckerOverrides = Field(
+        default_factory=dict,
+        description="Per-checker execution overrides for Cosmos Evaluator.",
+    )
     vlm_model: str = Field(default=DEFAULT_VLM_MODEL, min_length=1)
     llm_model: str = Field(default=DEFAULT_LLM_MODEL, min_length=1)
     image2video_model: str = Field(default=DEFAULT_IMAGE2VIDEO_MODEL, min_length=1)
@@ -85,10 +99,24 @@ class EventVideoGenerationCosmosTaskConfig(BaseModel):
         default_factory=EventVideoGenerationVariableDistribution,
     )
 
+    @field_validator("checker_overrides")
+    @classmethod
+    def validate_checker_overrides(cls, value):
+        return validate_checker_override_names(
+            value,
+            {ATTRIBUTE_VERIFICATION_CHECKER, PHYSICAL_PLAUSIBILITY_CHECKER},
+        )
 
-class EventVideoGenerationServiceLifecycleConfig(ServiceLifecycleTaskConfig):
+
+class EventVideoGenerationServiceLifecycleConfig(BaseModel):
     """Lifecycle settings for services used by Event Video Generation."""
 
+    model_config = ConfigDict(extra="ignore")
+
+    vlm_service: ServiceLifecycleServiceConfig = Field(
+        default_factory=ServiceLifecycleServiceConfig,
+        description="Shared VLM/LLM service lifecycle settings.",
+    )
     image2video_service: ServiceLifecycleServiceConfig = Field(
         default_factory=ServiceLifecycleServiceConfig,
         description="Image2video service lifecycle settings.",
@@ -119,13 +147,14 @@ class EventVideoGenerationDagPayloadConfig(BaseModel):
         default=True,
         description=(
             "Top-level service mode switch. When true, provided external service URLs "
-            "are used. When false, internal VLM, LLM, and image2video services are deployed."
+            "are used. When false, one shared VLM/LLM service and an image2video service "
+            "are deployed."
         ),
     )
     service_lifecycle: EventVideoGenerationServiceLifecycleConfig = Field(
         default_factory=EventVideoGenerationServiceLifecycleConfig,
         description=(
-            "VLM/LLM/image2video internal deployment flags. Each must be false when "
+            "Shared VLM/LLM and image2video deployment flags. Each must be false when "
             "external_services is true, and true when external_services is false."
         ),
     )
@@ -175,11 +204,10 @@ class EventVideoGenerationDagPayloadConfig(BaseModel):
         if sl_cfg is None:
             data["service_lifecycle"] = {
                 "vlm_service": {"enabled": deploy_internal},
-                "llm_service": {"enabled": deploy_internal},
                 "image2video_service": {"enabled": deploy_internal},
             }
         elif isinstance(sl_cfg, dict):
-            for service_key in ("vlm_service", "llm_service", "image2video_service"):
+            for service_key in ("vlm_service", "image2video_service"):
                 entry = sl_cfg.get(service_key)
                 if entry is None:
                     sl_cfg[service_key] = {"enabled": deploy_internal}
@@ -190,7 +218,7 @@ class EventVideoGenerationDagPayloadConfig(BaseModel):
     @model_validator(mode="after")
     def check_service_lifecycle_matches_external_services(self):
         expected = not self.external_services
-        for service_key in ("vlm_service", "llm_service", "image2video_service"):
+        for service_key in ("vlm_service", "image2video_service"):
             service = getattr(self.service_lifecycle, service_key)
             if service.enabled != expected:
                 logger.warning(
@@ -204,6 +232,9 @@ class EventVideoGenerationDagPayloadConfig(BaseModel):
     @model_validator(mode="after")
     def check_external_service_urls(self):
         if not self.external_services:
+            # One deployed Qwen3.8 serves both multimodal and text-only requests.
+            self.cosmos.llm_service_url = self.cosmos.vlm_service_url
+            self.cosmos.llm_model = self.cosmos.vlm_model
             return self
 
         for field_name in (

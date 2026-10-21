@@ -18,9 +18,17 @@
 # Required variables:
 #   - NGC_API_KEY
 #   - HF_TOKEN
-#   - Per-purpose S3 settings (see REQUIRED_CONFIG_VARS), or shorthand:
-#       AWS_S3_BUCKET, AWS_S3_REGION, AWS_S3_ACCESS_KEY_ID, AWS_S3_SECRET_ACCESS_KEY
-#     which fill any matching DAG/input/output setting that is still empty.
+#
+# Optional variables:
+#   - OSMO_TOKEN  OSMO Personal Access Token for OSMO DAGs (Airflow var osmo_token)
+#   - OSMO_POOL   OSMO compute pool for OSMO DAGs (Airflow var osmo_pool); required to run them
+#   - OSMO_URL    OSMO service URL (Airflow var osmo_url); required with OSMO_TOKEN
+#   - OSMO_HF_CACHE_SEED_DIR  Pre-populated Hugging Face cache mounted on the OSMO pool
+#     (Airflow var osmo_hf_cache_seed_dir); when empty, models download with HF_TOKEN
+#   - AWS_S3_BUCKET, AWS_S3_REGION, AWS_S3_ACCESS_KEY_ID, AWS_S3_SECRET_ACCESS_KEY
+#     One bucket and one credential set used for MSC and Airflow AWS variables.
+#   - VLM_API_KEY, LLM_API_KEY  Optional model endpoint credentials. SMT AnomalyGen
+#     uses vlm_api_key when set, otherwise falls back to the NGC key.
 #
 # Kubeconfig:
 #   - KUBECONFIG path is used when set
@@ -31,8 +39,6 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/s3_config.sh"
 
 SECRET_VALUES_DEV_FILE="$REPO_ROOT/deploy/secret_values_dev.yaml"
 LOCAL_SECRETS_ENV_FILE="$REPO_ROOT/secrets.env"
@@ -43,18 +49,10 @@ REQUIRED_SECRET_VARS=(
 )
 
 REQUIRED_CONFIG_VARS=(
-  AWS_S3_DAG_BUCKET
-  AWS_S3_DAG_REGION
-  AWS_S3_DAG_ACCESS_KEY_ID
-  AWS_S3_DAG_SECRET_ACCESS_KEY
-  AWS_S3_OUTPUT_BUCKET
-  AWS_S3_OUTPUT_REGION
-  AWS_S3_OUTPUT_ACCESS_KEY_ID
-  AWS_S3_OUTPUT_SECRET_ACCESS_KEY
-  AWS_S3_INPUT_BUCKET
-  AWS_S3_INPUT_REGION
-  AWS_S3_INPUT_ACCESS_KEY_ID
-  AWS_S3_INPUT_SECRET_ACCESS_KEY
+  AWS_S3_BUCKET
+  AWS_S3_REGION
+  AWS_S3_ACCESS_KEY_ID
+  AWS_S3_SECRET_ACCESS_KEY
 )
 
 check_required_env_vars() {
@@ -88,7 +86,6 @@ load_secrets_from_file() {
   # shellcheck disable=SC1090
   source "$secrets_file"
   set +a
-  apply_s3_unified_overrides
   return 0
 }
 
@@ -208,8 +205,6 @@ resolve_kubeconfig() {
 
 if [ -f "$LOCAL_SECRETS_ENV_FILE" ]; then
   load_secrets_from_file "$LOCAL_SECRETS_ENV_FILE" || exit 1
-else
-  apply_s3_unified_overrides
 fi
 
 if [ -t 0 ] && [ -f "$SECRET_VALUES_DEV_FILE" ] && [ ! -f "$LOCAL_SECRETS_ENV_FILE" ]; then
@@ -250,6 +245,10 @@ fi
 
 echo "✅ All required secrets and S3 settings are set"
 
+# MSC profiles and Airflow variables expect a bare bucket name, not an s3:// URI.
+AWS_S3_BUCKET="${AWS_S3_BUCKET#s3://}"
+AWS_S3_BUCKET="${AWS_S3_BUCKET%%/}"
+
 resolve_kubeconfig || exit 1
 
 echo "Generating $SECRET_VALUES_DEV_FILE..."
@@ -265,23 +264,19 @@ cat > "$SECRET_VALUES_DEV_FILE" <<EOF
       ngc:
         ngcApiKey: "$NGC_API_KEY"
       aws:
-        s3Dag:
-          bucket: "$AWS_S3_DAG_BUCKET"
-          region: "$AWS_S3_DAG_REGION"
-          accessKey: "$AWS_S3_DAG_ACCESS_KEY_ID"
-          secretKey: "$AWS_S3_DAG_SECRET_ACCESS_KEY"
-        s3Output:
-          bucket: "$AWS_S3_OUTPUT_BUCKET"
-          region: "$AWS_S3_OUTPUT_REGION"
-          accessKey: "$AWS_S3_OUTPUT_ACCESS_KEY_ID"
-          secretKey: "$AWS_S3_OUTPUT_SECRET_ACCESS_KEY"
-        s3Input:
-          bucket: "$AWS_S3_INPUT_BUCKET"
-          region: "$AWS_S3_INPUT_REGION"
-          accessKey: "$AWS_S3_INPUT_ACCESS_KEY_ID"
-          secretKey: "$AWS_S3_INPUT_SECRET_ACCESS_KEY"
+        bucket: "$AWS_S3_BUCKET"
+        region: "$AWS_S3_REGION"
+        accessKey: "$AWS_S3_ACCESS_KEY_ID"
+        secretKey: "$AWS_S3_SECRET_ACCESS_KEY"
+      vlmApiKey: "${VLM_API_KEY:-}"
+      llmApiKey: "${LLM_API_KEY:-}"
       huggingFace:
         hfToken: "$HF_TOKEN"
+      osmo:
+        token: "${OSMO_TOKEN:-}"
+        url: "${OSMO_URL:-}"
+        pool: "${OSMO_POOL:-}"
+        hfCacheSeedDir: "${OSMO_HF_CACHE_SEED_DIR:-}"
 EOF
 
 K8S_KUBECONFIG_JSON=$(printf '%s' "$K8S_REMOTE_KUBECONFIG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
@@ -296,7 +291,12 @@ echo "Generating $LOCAL_SECRETS_ENV_FILE..."
   for var_name in "${REQUIRED_SECRET_VARS[@]}"; do
     printf '%s=%q\n' "$var_name" "${!var_name}"
   done
-  for var_name in "${S3_UNIFIED_OVERRIDE_VARS[@]}"; do
+  for var_name in OSMO_TOKEN OSMO_URL OSMO_POOL OSMO_HF_CACHE_SEED_DIR; do
+    if [ -n "${!var_name:-}" ]; then
+      printf '%s=%q\n' "$var_name" "${!var_name}"
+    fi
+  done
+  for var_name in VLM_API_KEY LLM_API_KEY; do
     if [ -n "${!var_name:-}" ]; then
       printf '%s=%q\n' "$var_name" "${!var_name}"
     fi

@@ -151,9 +151,10 @@ def verify_cosmos_run_files(
 
     An entry is treated as failed when any required file is absent, or when the
     optional output_metadata.json sidecar exists and either records
-    attribute_verification.passed == False or cannot be read. Runs that omit the
-    sidecar entirely are preserved, matching how the dataset generation step
-    treats it as optional.
+    either the legacy attribute_verification result or the Cosmos Evaluator
+    attribute gate failed, or when the sidecar cannot be read. Runs that omit
+    the sidecar entirely are preserved, matching how the dataset generation
+    step treats it as optional.
     """
     run_dir = str(URL(output_directory.rstrip("/")) / run_id / "cosmos" / person_key / str(aug_idx))
     missing = []
@@ -169,7 +170,7 @@ def verify_cosmos_run_files(
         if not _attribute_verification_passed(output_metadata):
             missing.append(
                 f"{run_dir.rstrip('/')}/output_metadata.json "
-                "(attribute_verification failed or metadata unreadable)"
+                "(Cosmos attribute verification failed or metadata unreadable)"
             )
     return missing
 

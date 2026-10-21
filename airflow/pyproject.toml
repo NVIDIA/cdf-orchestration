@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdg-workflow-dags"
+version = "0.1.0"
+description = "SDG Workflow - Airflow DAGs and custom plugins for pipeline orchestration"
+requires-python = "~=3.11.0"
+authors = [{name = "NVIDIA"}]
+
+# SDG runtime dependencies, DAGs, and plugins are baked into docker/Dockerfile.airflow.
+# Keep Apache Airflow aligned with the base image so provider resolution cannot
+# upgrade it.
+dependencies = [
+  "apache-airflow==3.3.2",
+  "apache-airflow-providers-cncf-kubernetes==10.18.0",
+  "apache-airflow-providers-fab==3.9.0",
+  "ngcsdk==4.10.0",
+  # NGC requires >=43.0.1; allow the newer base image's crypto dependencies.
+  "cryptography>=43.0.1",
+  "multi-storage-client==0.41.0",
+  "pillow>=12.2.0",
+  # No PyAV here: its wheel bundles FFmpeg. Video decoding runs in the
+  # media_probe pod against the operator-provisioned FFmpeg sidecar.
+]
+
+[tool.setuptools]
+packages = []

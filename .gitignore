@@ -55,6 +55,8 @@ Thumbs.db
 **/__pycache__/
 
 # Development environment
+tests/.unit/
+tests/.smoke/
 .e2e_run_info
 .coverage
 .coverage.*
@@ -77,3 +79,4 @@ deploy/charts/
 deploy/secret_values_dev.yaml
 secrets.env
 deploy/deploy_secrets.env
+skill.md

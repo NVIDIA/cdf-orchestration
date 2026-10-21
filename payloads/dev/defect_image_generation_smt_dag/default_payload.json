@@ -1,0 +1,153 @@
+{
+  "api_version": "1.0",
+  "input_scene": "s3://<bucket-name>/path/to/scene.zip",
+  "output_directory": "s3://<bucket-name>/path/to/output",
+  "pipeline_mode": "full",
+  "enable_performance_reporting": true,
+  "external_services": false,
+  "service_lifecycle": {
+    "image_edit_service": {
+      "enabled": true,
+      "replicas": 8
+    }
+  },
+  "golden_generation": {
+    "defaults": {
+      "image_generation": {
+        "capture": {
+          "passes": {
+            "component_focus": {
+              "limits": {
+                "max_images": 38
+              },
+              "roi_selection": [
+                {
+                  "component_types": [
+                    "ic"
+                  ],
+                  "count": 24,
+                  "padding": 0.5
+                },
+                {
+                  "refdes": [
+                    "C2",
+                    "C14",
+                    "C15",
+                    "C16",
+                    "C65",
+                    "C66",
+                    "C67",
+                    "C72",
+                    "C73",
+                    "C74",
+                    "C75",
+                    "C76",
+                    "C77",
+                    "C78"
+                  ],
+                  "padding": 0.5
+                }
+              ]
+            },
+            "component_focus_roi": {
+              "limits": {
+                "max_images": 38
+              },
+              "roi_selection": [
+                {
+                  "component_types": [
+                    "ic"
+                  ],
+                  "count": 24,
+                  "padding": 0.5
+                },
+                {
+                  "refdes": [
+                    "C2",
+                    "C14",
+                    "C15",
+                    "C16",
+                    "C65",
+                    "C66",
+                    "C67",
+                    "C72",
+                    "C73",
+                    "C74",
+                    "C75",
+                    "C76",
+                    "C77",
+                    "C78"
+                  ],
+                  "padding": 0.5
+                }
+              ]
+            }
+          }
+        }
+      },
+      "simulation_output": {
+        "pass_name": "component_focus"
+      }
+    },
+    "configurations": [
+      {
+        "id": "golden-mixed-components"
+      }
+    ]
+  },
+  "defect_generation": {
+    "defaults": {
+      "anomaly_input": {
+        "class_by_component_type": {
+          "ic": "IC",
+          "capacitor": "passive_component"
+        }
+      },
+      "anomaly_generation": {
+        "staging": {
+          "fetch": {
+            "input": [
+              "s3://<bucket-name>/path/to/assets/UC1/"
+            ],
+            "recipe": "s3://<bucket-name>/path/to/recipe/exp_texture_ft_pcb.yaml",
+            "checkpoint": "s3://<bucket-name>/path/to/finetuned/UC1/iter_000015000.pt"
+          }
+        },
+        "amg_gen_model": "<your-vlm-model>",
+        "amg_judge_model": "<your-vlm-model>",
+        "amg_endpoints": [
+          {
+            "model": "<your-vlm-model>",
+            "base_url": "https://<your-vlm-endpoint>/v1"
+          }
+        ]
+      }
+    },
+    "configurations": [
+      {
+        "id": "ic-bridge",
+        "anomaly_generation": {
+          "per_defect_counts": {
+            "IC+bridge": 1
+          }
+        }
+      },
+      {
+        "id": "passive-excess-solder",
+        "anomaly_generation": {
+          "per_defect_counts": {
+            "passive_component+excess_solder": 1
+          }
+        }
+      },
+      {
+        "id": "passive-missing",
+        "anomaly_generation": {
+          "per_defect_counts": {
+            "passive_component+missing": 1
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 .PHONY: install-nfs
 
-install-nfs: ## Install host NFS export and StorageClass on the cluster
+install-nfs: ## [install nfs] Install host NFS export and StorageClass on the cluster
 	@NFS_NAMESPACE="$(NFS_NAMESPACE)" \
 	NFS_STORAGE_CLASS="$(NFS_STORAGE_CLASS)" \
 	NFS_EXPORT_PATH="$(NFS_EXPORT_PATH)" \

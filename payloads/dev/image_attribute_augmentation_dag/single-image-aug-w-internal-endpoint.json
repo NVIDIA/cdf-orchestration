@@ -1,0 +1,51 @@
+{
+  "input_path": "s3://<bucket-name>/path/to/input/",
+  "max_imgs": 1,
+  "output_directory": "s3://<bucket-name>/path/to/output",
+  "external_services": false,
+  "service_lifecycle": {
+    "vlm_service": {
+      "enabled": true,
+      "replicas": 1
+    },
+    "image_edit_service": {
+      "enabled": true,
+      "replicas": 2
+    }
+  },
+  "cosmos": {
+    "checker_overrides": {
+      "metropolis.attribute_verification": true
+    },
+    "num_augmentation": 1,
+    "external_services": false,
+    "output_directory": "s3://<bucket-name>/path/to/output",
+    "variable_distribution": {
+      "variables": {
+        "top_outer_color": {
+          "black": 1.0
+        },
+        "top_outer_type": {
+          "hoodie": 1.0
+        },
+        "bottom_type": {
+          "jeans": 1.0
+        },
+        "bottom_color": {
+          "blue": 1.0
+        },
+        "shoe_type": {
+          "sneakers": 1.0
+        },
+        "shoe_color": {
+          "white": 1.0
+        }
+      }
+    }
+  },
+  "event_and_person_attribute_search": {
+    "mode": "image_pas",
+    "external_services": false,
+    "output_directory": "s3://<bucket-name>/path/to/output"
+  }
+}

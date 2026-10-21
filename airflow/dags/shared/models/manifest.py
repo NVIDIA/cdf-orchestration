@@ -54,7 +54,18 @@ class ComponentConfig(BaseModel):
         default=True,
         description="Whether to enable the component",
     )
-    container_image: str = Field(..., description="Container image URI")
+    container_image: Optional[str] = Field(
+        default=None,
+        description="Container image URI (mutually exclusive with helm_chart)",
+    )
+    helm_chart: Optional[str] = Field(
+        default=None,
+        description="NVCF Helm chart identifier (mutually exclusive with container_image)",
+    )
+    helm_chart_service: Optional[str] = Field(
+        default=None,
+        description="Static Helm chart service name used as the NVCF inference entry point",
+    )
     deployment_profile: str = Field(..., description="Name of the deployment profile to use")
     container_args: Optional[str] = Field(
         default=None,
@@ -106,21 +117,59 @@ class ComponentConfig(BaseModel):
             "configuration as model_cache_pvc."
         ),
     )
+    io_cache_pvc: Optional[str] = Field(
+        default=None,
+        description=(
+            "I/O-cache PVC name to mount at /mnt/ngc-io-cache for MSC POSIX "
+            "reads and writes (e.g. ngc-io-cache). May also be set on the "
+            "deployment profile configuration as io_cache_pvc."
+        ),
+    )
 
     class Config:
         populate_by_name = True  # Allow both 'environment' and 'env' aliases
+
+    @model_validator(mode="after")
+    def validate_deployment_artifact(self):
+        """Require one supported artifact and reject ambiguous artifact definitions."""
+        if self.container_image and self.helm_chart:
+            raise ValueError("container_image and helm_chart are mutually exclusive")
+        if not self.container_image and not self.helm_chart and not self.models:
+            raise ValueError("one of container_image, helm_chart, or models is required")
+        if self.helm_chart_service and not self.helm_chart:
+            raise ValueError("helm_chart_service requires helm_chart")
+        return self
 
 
 class EndpointComponent(ComponentConfig):
     """Configuration for an endpoint component."""
 
-    pass
+    @model_validator(mode="after")
+    def validate_helm_chart_entry_point(self):
+        """Helm endpoint functions require a static service as their entry point."""
+        if self.helm_chart and not self.helm_chart_service:
+            raise ValueError("helm_chart_service is required when helm_chart is set")
+        return self
 
 
 class TaskComponent(ComponentConfig):
     """Configuration for a task component."""
 
-    pass
+    max_concurrency: int = Field(
+        default=1,
+        description=(
+            "Maximum mapped instances of this task active in one DAG run. "
+            "Defaults to 1. Internal and external augmentation apply this as "
+            "max_active_tis_per_dagrun."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_max_concurrency(self):
+        """Reject a non-positive task concurrency cap."""
+        if self.max_concurrency < 1:
+            raise ValueError("max_concurrency must be at least 1")
+        return self
 
 
 class DeploymentComponents(BaseModel):

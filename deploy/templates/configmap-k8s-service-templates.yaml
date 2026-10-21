@@ -39,20 +39,6 @@ data:
               image: __IMAGE__
               ports:
                 - containerPort: __INFERENCE_PORT__
-              startupProbe:
-                httpGet:
-                  path: __HEALTH_URI__
-                  port: __INFERENCE_PORT__
-                periodSeconds: 10
-                timeoutSeconds: 5
-                failureThreshold: 60
-              livenessProbe:
-                httpGet:
-                  path: __HEALTH_URI__
-                  port: __INFERENCE_PORT__
-                periodSeconds: 10
-                timeoutSeconds: 5
-                failureThreshold: 3
               readinessProbe:
                 httpGet:
                   path: __HEALTH_URI__

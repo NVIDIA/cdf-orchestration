@@ -65,7 +65,7 @@ def load_cosmos_base_config(
 
 class CosmosTaskGroup:
     DEFAULT_VALIDATE_PAYLOAD_TASK_ID = "validate_payload"
-    DEFAULT_INTERNAL_AUGMENTATION_POOL = "internal_image_edit_service_pool"
+    DEFAULT_POOL = "default_pool"
     DEFAULT_EXTERNAL_AUGMENTATION_POOL = "external_image_edit_service_pool"
 
     def __init__(
@@ -77,7 +77,6 @@ class CosmosTaskGroup:
         output_validation_op_kwargs: dict[str, Any] | None = None,
         task_config: str = "{{ params.payload.cosmos }}",
         validate_payload_task_id: str = DEFAULT_VALIDATE_PAYLOAD_TASK_ID,
-        internal_augmentation_pool: str = DEFAULT_INTERNAL_AUGMENTATION_POOL,
         external_augmentation_pool: str = DEFAULT_EXTERNAL_AUGMENTATION_POOL,
         group_id: str = "cosmos_augmentation",
     ):
@@ -96,7 +95,6 @@ class CosmosTaskGroup:
                 output validation callable.
             task_config: Cosmos task config payload (templated from DAG params).
             validate_payload_task_id: Task that publishes validated payload XCom.
-            internal_augmentation_pool: Airflow pool for internal image-edit augmentation.
             external_augmentation_pool: Airflow pool for external image-edit augmentation.
         """
         if config_generation_callable is None:
@@ -110,9 +108,18 @@ class CosmosTaskGroup:
         self.output_validation_op_kwargs = output_validation_op_kwargs or {}
         self.task_config = task_config
         self.validate_payload_task_id = validate_payload_task_id
-        self.internal_augmentation_pool = internal_augmentation_pool
+        self.internal_max_active_tis_per_dagrun = None
         self.external_augmentation_pool = external_augmentation_pool
         self.group_id = group_id
+
+    def _max_concurrency_from_manifest(self) -> int:
+        """Read the augmentation task's ``max_concurrency`` from the DAG manifest."""
+        if self.builder is None or not hasattr(self.builder, "manifest"):
+            raise ValueError("ComponentBuilder is required to read augmentation max_concurrency")
+        augmentation = self.builder.manifest.deployment.components.tasks.get("augmentation")
+        if augmentation is None:
+            raise ValueError("The augmentation task is missing from the deployment manifest")
+        return augmentation.max_concurrency or 1
 
     def select_augmentation_pool(self, **context) -> list[str]:
         """Branch to internal or external augmentation based on external_services."""
@@ -130,8 +137,8 @@ class CosmosTaskGroup:
             )
             return [f"{self.group_id}.augmentation_external"]
         logging.info(
-            "Internal image-edit mode; routing to %s",
-            self.internal_augmentation_pool,
+            "Internal image-edit mode; max_active_tis_per_dagrun=%s",
+            self.internal_max_active_tis_per_dagrun,
         )
         return [f"{self.group_id}.augmentation_internal"]
 
@@ -198,9 +205,12 @@ class CosmosTaskGroup:
 
     def get_augmentation_tasks(self, generate_configs_task: PythonOperator):
         """
-        Get internal and external mapped augmentation tasks with static pool names.
+        Get internal and external mapped augmentation tasks.
 
-        MappedOperator cannot template ``pool``; a branch selects which task group runs.
+        MappedOperator cannot template ``pool``; a branch selects which task runs.
+        Both tasks cap overlap with the manifest ``max_concurrency`` via
+        ``max_active_tis_per_dagrun``. Internal tasks use the default pool.
+        External tasks keep their service pool.
         """
         if self.builder is None:
             raise ValueError(
@@ -213,6 +223,7 @@ class CosmosTaskGroup:
             "| replace('+', '_') | replace('.', '_') }}"
         )
         expand_args = XComArg(generate_configs_task)
+        self.internal_max_active_tis_per_dagrun = self._max_concurrency_from_manifest()
 
         augmentation_external = self.builder.partial_task(
             component_name="augmentation",
@@ -220,14 +231,20 @@ class CosmosTaskGroup:
             pool=self.external_augmentation_pool,
             name=task_name,
             retry_delay=datetime.timedelta(seconds=15),
+            max_active_tis_per_dagrun=self.internal_max_active_tis_per_dagrun,
         ).expand(container_args=expand_args)
+
+        internal_task_kwargs: dict[str, Any] = {
+            "pool": self.DEFAULT_POOL,
+            "max_active_tis_per_dagrun": self.internal_max_active_tis_per_dagrun,
+        }
 
         augmentation_internal = self.builder.partial_task(
             component_name="augmentation",
             task_id="augmentation_internal",
-            pool=self.internal_augmentation_pool,
             name=task_name,
             retry_delay=datetime.timedelta(seconds=15),
+            **internal_task_kwargs,
         ).expand(container_args=expand_args)
 
         return augmentation_external, augmentation_internal

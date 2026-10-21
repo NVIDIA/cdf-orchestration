@@ -13,7 +13,7 @@ metadata:
   #   - post-install: Run after a `helm install`.
   #   - post-upgrade: Run after a `helm upgrade`.
   # - "helm.sh/hook-weight": Orders hooks with the same event. Lower is earlier. Here, "5" is a weight value.
-  # - "helm.sh/hook-delete-policy": Controls when Helm deletes the Job resource created by the hook. 
+  # - "helm.sh/hook-delete-policy": Controls when Helm deletes the Job resource created by the hook.
   #   - before-hook-creation: Delete previous runs of this hook before running again.
   #   - hook-succeeded: Delete the Job after it completes successfully.
   annotations:
@@ -64,8 +64,8 @@ spec:
                 sleep 2
               done
               echo "Creating Airflow pools..."
-              {{- range .Values.airflowPools.pools }}
-              airflow pools set {{ .name | quote }} {{ .slots }} {{ .description | default "" | quote }}{{- if .includeDeferred }} --include-deferred{{ end }}
+              {{- range $name, $pool := .Values.airflowPools.pools }}
+              airflow pools set {{ $name | quote }} {{ $pool.slots }} {{ $pool.description | default "" | quote }}{{- if $pool.includeDeferred }} --include-deferred{{ end }}
               {{- end }}
               echo "Pools created successfully."
 {{- end }}

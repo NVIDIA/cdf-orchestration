@@ -1,0 +1,132 @@
+pipeline:
+  model_cache_path: ckpts  # Where to read ckpts (default docker mount: /workspace/ckpts)
+  gpus: all
+  # empty_output_policy: warn | fail (default: warn)
+
+
+data:
+  - inputs:
+      # REQUIRED: single input video (local path or remote URL: s3://, msc://, http(s)://)
+      video_path: "__REQUIRED__"
+      # OPTIONAL: input sidecars.
+      # - metadata_json_path: only used by window modes when use_sidecar_metadata=true and file is named metadata.json
+      # - mcq_json_path: optional curated video_mcq.json (used only when use_mcq_json_from_data_curation=true)
+      metadata_json_path: null
+      mcq_json_path: null
+    output:
+      # REQUIRED: per-sample output folder
+      out_dir: output/full_pipeline
+      # OPTIONAL (default: ${out_dir}/config.yaml): save the effective config used for this run
+      config_path: ${.out_dir}/config.yaml
+
+      # REQUIRED when super_resolution.enabled=true:
+      super_resolution_video_path: ${.out_dir}/super_resolution_video.mp4
+
+      # REQUIRED when detection_and_tracking.enabled=true:
+      detection_video_path: ${.out_dir}/detection_video.mp4
+      tracking_video_path: ${.out_dir}/tracking_video.mp4
+      tracking_video_redid_path: ${.out_dir}/tracking_video_redid.mp4
+      objects_json_path: ${.out_dir}/objects.json
+      instances_json_path: ${.out_dir}/instances.json
+
+      # REQUIRED when vlm_json.enabled=true:
+      events_json_path: ${.out_dir}/events.json
+      # REQUIRED when vlm_json.enabled=true: VLM video.json (scene_description, event_summary, ...)
+      video_json_path: ${.out_dir}/video.json
+      # REQUIRED when mcq_generation.enabled=true:
+      mcq_json_path: ${.out_dir}/video_mcq.json
+      # REQUIRED when mcq_generation.enabled=true (window modes produce metadata.json):
+      metadata_json_path: ${.out_dir}/metadata.json
+
+endpoints:
+  # Endpoints are OpenAI-compatible Chat Completions APIs.
+  # - Base URL should typically end with "/v1" (e.g. http://127.0.0.1:18002/v1)
+  # - "model" should match an id returned by GET /v1/models
+  vlm:
+    # REQUIRED when vlm_json.enabled=true (and for window_* modes).
+    url: "__REQUIRED__"
+    model: "__REQUIRED__"
+  llm:
+    # REQUIRED only for window-vlm-llm / metadata-llm modes.
+    url: "__REQUIRED__"
+    model: "__REQUIRED__"
+
+super_resolution:
+  enabled: true
+  # NOTE: default DOWNLOAD_CKPTS is typically "7b", so we default to seedvr2_7b here.
+  # If you want seedvr2_7b_sharp, set DOWNLOAD_CKPTS=7b_sharp (or all) before running.
+  variant: seedvr2_7b
+  seed: null
+  res_h: 720
+  res_w: 1280
+  sp_size: 1
+  window_frames: 128
+  overlap_frames: 64
+  min_free_gb: 10
+  oom_retries: 1
+
+detection_and_tracking:
+  enabled: true
+  detector: rfdetr
+  # track_on: sr   # optional: "sr" (default when SR enabled) or "input"
+  threshold: 0.2
+  iou_threshold: 0.3
+  classes: ["car", "truck", "bus", "motorcycle", "bicycle"]
+  tracker: boosttrack
+  reid_weights: ""
+  # OPTIONAL (default: false): copy original input video into outputs for traceability.
+  # Set true if you explicitly want a colocated copy.
+  copy_video: false
+  per_class: true
+  asso_func: diou
+  min_hits: 3
+  max_age: 60
+  min_track_frames: 5
+  deepocsort_stage2_off: true
+  deepocsort_min_hits_nonconsecutive: true
+  save_vis: false
+  save_video: true
+  save_video_redid: true
+  save_rgb: false
+  cross_class_iou_threshold: 0.9
+  dedup_iou_threshold: 0.3
+  dedup_priority: prev_iou
+
+vlm_json:
+  enabled: true
+  prompt_file: ../modules/mcq-generation/prompts/video_event_analysis_prompt_redid.md
+  frame_fps: 2
+  resolution: 360
+  max_frames: 30
+  max_tokens: 2048
+  timeout: 600
+  limit: null
+  rate_limit: 0
+
+mcq_generation:
+  enabled: true
+  per_video: true
+  # Default: window-vlm-llm (frames -> VLM caption -> LLM MCQ). Set endpoints.vlm and endpoints.llm.
+  mode: window-vlm-llm
+  # Optional: prefer data-curation's curated MCQ when present (requires metadata.json).
+  use_mcq_json_from_data_curation: false
+  # Optional: after MCQ generation, run metadata fixing (best-effort) using metadata.json.
+  # Also fixes ids/fps/width/height/duration to match metadata (best-effort).
+  use_metadata_json: true
+  # Window metadata extraction (used when mode is window-* or metadata-llm):
+  window_metadata_extraction:
+    # Output schema keys (metadata.json windows[]):
+    # - <caption_key>: per-window caption text produced by the VLM
+    # - <enhanced_caption_key>: LLM-enhanced payload (stores embedded MCQ JSON as text)
+    caption_key: vlm_caption
+    enhanced_caption_key: llm_enhanced_caption
+    window_seconds: 4.0
+    sampling_fps: 2.0
+    resolution: 480
+    max_frames: 100
+    vlm_max_tokens: 4096
+    llm_max_tokens: 2048
+    timeout: 600
+    rate_limit: 0
+    write_video_mcq_json: true
+    aggregate_windows: true

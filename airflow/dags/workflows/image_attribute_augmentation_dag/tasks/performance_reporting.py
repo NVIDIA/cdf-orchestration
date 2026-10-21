@@ -20,9 +20,9 @@ from dags.workflows.image_attribute_augmentation_dag.models import (
     ImageAttributeAugmentationDagPayloadConfig,
 )
 
-REPORT_FILENAME = "paidf_orchestration_stats.yaml"
-HTML_REPORT_FILENAME = "paidf_orchestration_stats.html"
-REPORT_TYPE = "paidf_image_attribute_augmentation_orchestration_stats"
+REPORT_FILENAME = "cdf_orchestration_stats.yaml"
+HTML_REPORT_FILENAME = "cdf_orchestration_stats.html"
+REPORT_TYPE = "cdf_image_attribute_augmentation_orchestration_stats"
 SCHEMA_VERSION = 1
 _CATEGORY_SUBSTRING_RULES = (
     ("augmentation_external", "augmentation"),

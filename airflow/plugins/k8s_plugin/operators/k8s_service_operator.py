@@ -10,6 +10,7 @@ customization without changing operator code.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -27,6 +28,7 @@ from slot_holds.pool_slot_hold_operator import ensure_pool_slot_holds
 from triggers import XComWaitTrigger
 
 from k8s_plugin.connection import resolve_kubernetes_backend
+from k8s_plugin.labels import apply_metadata_labels, k8s_plugin_resource_labels
 from k8s_plugin.model_cache import build_inference_pod_volumes
 from k8s_plugin.operators.k8s_task_operator import (
     normalize_node_selector,
@@ -81,7 +83,9 @@ class K8sServiceOperator(BaseOperator):
         context: Optional[str] = None,
         in_cluster: Optional[bool] = None,
         model_cache_pvc: Optional[str] = None,
+        io_cache_pvc: Optional[str] = None,
         shm_size: Optional[str] = None,
+        container_resources: Optional[Dict[str, Any]] = None,
         nofile_limit: Optional[int] = None,
         inference_port: int = 8000,
         health_uri: str = "/health",
@@ -110,7 +114,9 @@ class K8sServiceOperator(BaseOperator):
     ) -> None:
         super().__init__(**kwargs)
         self.model_cache_pvc = model_cache_pvc
+        self.io_cache_pvc = io_cache_pvc
         self.shm_size = shm_size
+        self.container_resources = copy.deepcopy(container_resources or {})
         self.nofile_limit = nofile_limit
         self.name = name
         self.container_image = container_image
@@ -137,6 +143,9 @@ class K8sServiceOperator(BaseOperator):
         self.in_cluster = in_cluster
         self.inference_port = inference_port
         self.health_uri = health_uri
+        self.health_protocol = (health_protocol or "HTTP").upper()
+        if self.health_protocol not in {"HTTP", "TCP"}:
+            raise ValueError("health_protocol must be HTTP or TCP")
         self.replicas = replicas
         self.deployment_ready_timeout_seconds = deployment_ready_timeout_seconds
         self.poll_interval_seconds = poll_interval_seconds
@@ -194,13 +203,16 @@ class K8sServiceOperator(BaseOperator):
 
         k8s_name = self._build_k8s_resource_name(self.name, context)
         self._k8s_resource_name = k8s_name
+        run_labels = k8s_plugin_resource_labels(context, task_id=self.task_id)
+        ti = context["ti"]
+        ti.xcom_push(key="resource_id", value=k8s_name)
 
         self.log.info("Creating Deployment %s in namespace %s", k8s_name, self.namespace)
-        deployment = self._build_deployment(k8s_name)
+        deployment = self._build_deployment(k8s_name, extra_labels=run_labels)
         self._apply_deployment(apps_v1, k8s_name, deployment)
 
         self.log.info("Creating Service %s in namespace %s", k8s_name, self.namespace)
-        service = self._build_service(k8s_name)
+        service = self._build_service(k8s_name, extra_labels=run_labels)
         self._apply_service(core_v1, k8s_name, service)
 
         self.log.info(
@@ -209,7 +221,7 @@ class K8sServiceOperator(BaseOperator):
         )
         self._wait_for_ready(apps_v1, k8s_name)
 
-        url = f"http://{k8s_name}.{self.namespace}.svc.cluster.local:{self.inference_port}/v1"
+        url = self._service_url(k8s_name)
 
         endpoint_dict = {
             "url": url,
@@ -217,7 +229,6 @@ class K8sServiceOperator(BaseOperator):
             "resource_version": "latest",
         }
 
-        ti = context["ti"]
         ti.xcom_push(key="endpoint", value=endpoint_dict)
 
         if self.defer_until_xcom and self.defer_until_xcom_task_id:
@@ -327,7 +338,9 @@ class K8sServiceOperator(BaseOperator):
                         env.append(client.V1EnvVar(name=k, value=v))
         return env
 
-    def _build_deployment(self, name: str) -> client.V1Deployment:
+    def _build_deployment(
+        self, name: str, extra_labels: Optional[Dict[str, str]] = None
+    ) -> client.V1Deployment:
         template_path = os.path.join(TEMPLATE_DIR, "deployment.yaml")
         self.log.info("Loading deployment template from %s", template_path)
         with open(template_path) as f:
@@ -345,6 +358,11 @@ class K8sServiceOperator(BaseOperator):
         pod_spec = spec["spec"]["template"]["spec"]
         pod_spec["hostIPC"] = self.host_ipc
         container = pod_spec["containers"][0]
+        if self.health_protocol == "TCP":
+            readiness_probe = container.get("readinessProbe", {})
+            readiness_probe.pop("httpGet", None)
+            readiness_probe["tcpSocket"] = {"port": self.inference_port}
+            container["readinessProbe"] = readiness_probe
         if self.container_args:
             command, args = _parse_container_command_and_args(self.container_args)
             if command:
@@ -363,12 +381,15 @@ class K8sServiceOperator(BaseOperator):
         env_vars = self._build_env()
         env_dicts = [{"name": e.name, "value": e.value} for e in env_vars]
         container.setdefault("env", []).extend(env_dicts)
+        resources = copy.deepcopy(container.get("resources", {}))
+        for kind, quantities in self.container_resources.items():
+            resources.setdefault(kind, {}).update(quantities)
         if self.gpu:
             gpu_count = str(self.gpu_count)
-            container["resources"] = {
-                "limits": {"nvidia.com/gpu": gpu_count},
-                "requests": {"nvidia.com/gpu": gpu_count},
-            }
+            for kind in ("limits", "requests"):
+                resources.setdefault(kind, {})["nvidia.com/gpu"] = gpu_count
+        if resources:
+            container["resources"] = resources
         if self.image_pull_secrets:
             pod_spec["imagePullSecrets"] = [{"name": s} for s in self.image_pull_secrets]
         if self.node_selector:
@@ -379,6 +400,7 @@ class K8sServiceOperator(BaseOperator):
         volumes, volume_mounts = build_inference_pod_volumes(
             gpu=bool(self.gpu),
             model_cache_pvc=self.model_cache_pvc,
+            io_cache_pvc=self.io_cache_pvc,
             shm_size=self.shm_size,
         )
         if volumes:
@@ -386,9 +408,15 @@ class K8sServiceOperator(BaseOperator):
             container["volumeMounts"] = [_serialize_k8s_object(m) for m in volume_mounts]
 
         api_client = client.ApiClient()
-        return api_client.deserialize(_FakeResponse(json.dumps(spec)), "V1Deployment")
+        deployment = api_client.deserialize(_FakeResponse(json.dumps(spec)), "V1Deployment")
+        if extra_labels:
+            apply_metadata_labels(deployment.metadata, extra_labels)
+            apply_metadata_labels(deployment.spec.template.metadata, extra_labels)
+        return deployment
 
-    def _build_service(self, name: str) -> client.V1Service:
+    def _build_service(
+        self, name: str, extra_labels: Optional[Dict[str, str]] = None
+    ) -> client.V1Service:
         template_path = os.path.join(TEMPLATE_DIR, "service.yaml")
         self.log.info("Loading service template from %s", template_path)
         with open(template_path) as f:
@@ -398,7 +426,13 @@ class K8sServiceOperator(BaseOperator):
         spec = pyyaml.safe_load(raw)
 
         api_client = client.ApiClient()
-        return api_client.deserialize(_FakeResponse(json.dumps(spec)), "V1Service")
+        service = api_client.deserialize(_FakeResponse(json.dumps(spec)), "V1Service")
+        if extra_labels:
+            apply_metadata_labels(service.metadata, extra_labels)
+        return service
+
+    def _service_url(self, name: str) -> str:
+        return f"http://{name}.{self.namespace}.svc.cluster.local:{self.inference_port}"
 
     def _apply_deployment(
         self, api: client.AppsV1Api, name: str, deployment: client.V1Deployment

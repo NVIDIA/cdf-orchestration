@@ -27,7 +27,7 @@ data:
       containers:
         - name: base
           image: {{ .Values.airflow.defaultAirflowRepository }}:{{ .Values.airflow.defaultAirflowTag }}
-          imagePullPolicy: Always
+          imagePullPolicy: {{ .Values.airflow.images.airflow.pullPolicy | default "IfNotPresent" }}
           env:
             - name: AIRFLOW__CORE__EXECUTOR
               value: LocalExecutor
@@ -63,12 +63,6 @@ data:
                   key: {{ default "value" .secretKey }}
             {{- end }}
           volumeMounts:
-            - name: s3-dags
-              mountPath: /opt/airflow/dags
-            - name: s3-python-deps
-              mountPath: /opt/airflow/python-deps
-            - name: s3-plugins
-              mountPath: /opt/airflow/plugins
             {{- if .Values.airflow.logs.persistence.enabled }}
             - name: logs-data
               mountPath: /opt/airflow/logs
@@ -79,15 +73,6 @@ data:
           resources:
             {{- toYaml .Values.global.dags.podTemplate.resources | nindent 12 }}
       volumes:
-        - name: s3-dags
-          persistentVolumeClaim:
-            claimName: {{ .Values.global.dags.persistence.claimName }}
-        - name: s3-python-deps
-          persistentVolumeClaim:
-            claimName: {{ .Values.global.pythonDependencies.persistence.claimName }}
-        - name: s3-plugins
-          persistentVolumeClaim:
-            claimName: {{ .Values.global.plugins.persistence.claimName }}
         {{- if .Values.airflow.logs.persistence.enabled }}
         - name: logs-data
           persistentVolumeClaim:

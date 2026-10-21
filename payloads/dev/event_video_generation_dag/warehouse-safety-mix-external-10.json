@@ -1,0 +1,43 @@
+{
+  "input_path": "s3://<bucket-name>/path/to/input/",
+  "max_images": 1,
+  "output_directory": "s3://<bucket-name>/path/to/output",
+  "external_services": true,
+  "service_lifecycle": {
+    "vlm_service": {
+      "enabled": false
+    },
+    "image2video_service": {
+      "enabled": false
+    }
+  },
+  "cosmos": {
+    "checker_overrides": {
+      "metropolis.attribute_verification": true,
+      "metropolis.physical_plausibility": true
+    },
+    "num_augmentation": 10,
+    "external_services": true,
+    "output_directory": "s3://<bucket-name>/path/to/output",
+    "vlm_service_url": "https://<your-vlm-endpoint>/v1",
+    "vlm_model": "Qwen/Qwen3.8-27B-FP8",
+    "llm_service_url": "https://<your-llm-endpoint>/v1",
+    "llm_model": "Qwen/Qwen3.8-27B-FP8",
+    "image2video_service_url": "https://<your-image2video-endpoint>/v1",
+    "cosmos_evaluator_service_url": "https://<your-cosmos-evaluator-endpoint>",
+    "variable_distribution": {
+      "variables": {
+        "anomaly_type": {
+          "person_climbing": 0.2,
+          "person_running": 0.2,
+          "smoking_or_vaping": 0.2,
+          "person_fighting": 0.2,
+          "fire_or_smoke": 0.2
+        },
+        "env_type": {
+          "warehouse": 1.0
+        }
+      }
+    }
+  }
+}

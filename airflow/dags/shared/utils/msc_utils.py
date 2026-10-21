@@ -30,6 +30,10 @@ from pydantic import ValidationError
 # Supported video file extensions
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".webm")
 
+# POSIX MSC profile for the ngc-io-cache PVC (mounted at this path on K8s pods).
+IO_CACHE_PROFILE = "ngc-io-cache"
+IO_CACHE_MOUNT_PATH = "/mnt/ngc-io-cache"
+
 # Patterns for list_directory to filter by video extensions (for msc.list)
 VIDEO_PATTERNS: Sequence[Tuple[PatternType, str]] = [
     (PatternType.INCLUDE, "*" + ext) for ext in VIDEO_EXTENSIONS
@@ -135,6 +139,28 @@ def convert_to_msc_url(url: str) -> str:
 
     logging.warning(f"No path mapping found for URL: {url}")
     return url
+
+
+def io_cache_msc_url(relative_path: str = "") -> str:
+    """Build an ``msc://ngc-io-cache/...`` URL for the mounted POSIX profile.
+
+    Accepts a relative key, a path under ``/mnt/ngc-io-cache``, a ``file://``
+    URL, or an already resolved ``msc://ngc-io-cache/`` URL. Use this at call
+    sites that should read or write the I/O-cache volume rather than S3.
+    """
+    rel = str(relative_path or "").strip()
+    prefix = f"msc://{IO_CACHE_PROFILE}/"
+    if rel.startswith("msc://"):
+        return rel if rel.endswith("/") or rel.count("/") > 2 else prefix
+    if rel.startswith("file://"):
+        rel = rel[len("file://") :]
+    mount = IO_CACHE_MOUNT_PATH.rstrip("/")
+    if rel == mount:
+        rel = ""
+    elif rel.startswith(mount + "/"):
+        rel = rel[len(mount) + 1 :]
+    rel = rel.lstrip("/")
+    return prefix + rel if rel else prefix
 
 
 def ensure_msc_configured(f):

@@ -1,0 +1,62 @@
+{
+  "input_path": "s3://<bucket-name>/path/to/input/",
+  "max_videos": 1,
+  "output_directory": "s3://<bucket-name>/path/to/output",
+  "external_services": false,
+  "service_lifecycle": {
+    "vlm_service": {
+      "enabled": true,
+      "replicas": 1
+    },
+    "llm_service": {
+      "enabled": true,
+      "replicas": 1
+    },
+    "cosmos_transfer_service": {
+      "enabled": true,
+      "replicas": 1
+    }
+  },
+  "cosmos": {
+    "checker_overrides": {
+      "metropolis.hallucination": true,
+      "metropolis.attribute_verification": true,
+      "metropolis.physical_plausibility": false
+    },
+    "num_augmentation": 1,
+    "variable_distribution": {
+      "variables": {
+        "weather": {
+          "cloudy": 0.5,
+          "sunny": 0.5
+        },
+        "time_of_day": {
+          "morning": 0.5,
+          "afternoon": 0.5
+        }
+      }
+    }
+  },
+  "captioning": {
+    "enable_llm_summary": true
+  },
+  "visual_qa": {
+    "generation_mode": "window-vlm-llm",
+    "question_bank_file": "s3://<bucket-name>/path/to/question_bank.json",
+    "input_source": "auto",
+    "include_reasoning": true,
+    "media_mode": "auto"
+  },
+  "training_export": {
+    "formats": [
+      "tao-vl-reason-v1.0"
+    ]
+  },
+  "reasoning": {
+    "reasoning_mode": "keep"
+  },
+  "super_resolution": {},
+  "detection_and_tracking": {
+    "allow_model_download": true
+  }
+}

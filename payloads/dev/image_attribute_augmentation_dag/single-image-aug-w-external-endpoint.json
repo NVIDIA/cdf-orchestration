@@ -1,0 +1,62 @@
+{
+  "input_path": "s3://<bucket-name>/path/to/input/",
+  "max_imgs": 1,
+  "output_directory": "s3://<bucket-name>/path/to/output",
+  "external_services": true,
+  "service_lifecycle": {
+    "vlm_service": {
+      "enabled": false,
+      "replicas": 1
+    },
+    "image_edit_service": {
+      "enabled": false,
+      "replicas": 1
+    }
+  },
+  "cosmos": {
+    "checker_overrides": {
+      "metropolis.attribute_verification": true
+    },
+    "vlm_service_url": "https://<your-vlm-endpoint>/v1",
+    "llm_service_url": "https://<your-llm-endpoint>/v1",
+    "image_edit_service_url": "https://<your-image-edit-endpoint>/v1",
+    "cosmos_evaluator_service_url": "https://<your-cosmos-evaluator-endpoint>",
+    "vlm_model": "Qwen/Qwen3.8-27B-FP8",
+    "llm_model": "Qwen/Qwen3.8-27B-FP8",
+    "image_edit_model": "Qwen/Qwen-Image-Edit-2511",
+    "num_augmentation": 1,
+    "external_services": true,
+    "output_directory": "s3://<bucket-name>/path/to/output",
+    "variable_distribution": {
+      "variables": {
+        "top_outer_color": {
+          "black": 1.0
+        },
+        "top_outer_type": {
+          "hoodie": 1.0
+        },
+        "bottom_type": {
+          "jeans": 1.0
+        },
+        "bottom_color": {
+          "blue": 1.0
+        },
+        "shoe_type": {
+          "sneakers": 1.0
+        },
+        "shoe_color": {
+          "white": 1.0
+        }
+      }
+    }
+  },
+  "event_and_person_attribute_search": {
+    "vlm_service_url": "https://<your-vlm-endpoint>/v1",
+    "llm_service_url": "https://<your-llm-endpoint>/v1",
+    "vlm_model": "Qwen/Qwen3.8-27B-FP8",
+    "llm_model": "Qwen/Qwen3.8-27B-FP8",
+    "mode": "image_pas",
+    "external_services": true,
+    "output_directory": "s3://<bucket-name>/path/to/output"
+  }
+}

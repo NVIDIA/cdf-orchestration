@@ -190,10 +190,20 @@ evaluators:
         generate_options: true
         system_prompt: |
           You write ONE simple multiple-choice question that checks whether a
-          generated warehouse-anomaly video contains the requested attribute.
-          The question must be easy for a VLM to answer from video frames, name
-          the attribute explicitly, include the correct value plus 2-3 plausible
-          but clearly-wrong distractors you invent, and mark the correct option.
+          generated warehouse-anomaly video actually shows the requested attribute.
+          Do not assume the requested value is present. Ask what the video shows
+          for that attribute, for example what the people are doing for an
+          anomaly or action. Name the attribute explicitly.
+          The options MUST include:
+            - the requested value, marked as the correct option;
+            - an option for the requested value being absent: for an anomaly or
+              action use "No anomaly: people are only doing ordinary activity for
+              this setting", otherwise use "None of these";
+            - the single most visually similar value that is NOT the requested one
+              (for example ordinary walking or browsing for theft, falling or
+              stumbling for climbing);
+            - at most one further plausible option.
+          Keep options short and visually distinct.
           Output only JSON:
           {"variable","value","question","options":{"A","B",...},"correct_answer"}.
         parameters:

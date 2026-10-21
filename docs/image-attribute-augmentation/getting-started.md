@@ -31,18 +31,24 @@ opening the Airflow UI, then return here to run Image Attribute Augmentation.
 
    - Where the input images are stored in S3.
    - Where to write the output dataset.
-   - Whether to use external VLM, LLM, and image-edit endpoints or deploy them
-     internally.
-   - How many augmentations to perform per image.
+   - Whether to use external VLM, LLM, and image-edit endpoints or deploy one
+     shared VLM/LLM service and one image-edit service internally.
+   - How many augmentations to attempt per person ID.
    - Which output attributes to generate and their distribution.
 
-   To get started quickly, copy
-   [`single-image-aug-w-internal-endpoint.json`](../../payload/image_attribute_augmentation_dag/single-image-aug-w-internal-endpoint.json),
-   then set:
+   To get started quickly, copy one of the
+   [starter payloads](payload-guide.md#quick-start-starter-payloads) (one for
+   in-cluster services and one for external endpoints), then set:
 
    - `input_path` to `s3://<your-input-bucket>/<your-workflow>/input`
    - `output_directory` to your desired output path, for example
      `s3://<your-output-bucket>/<your-workflow>/output`
+   - For external endpoints, the VLM, LLM, and image-edit URLs in `cosmos` and
+     the VLM and LLM URLs in `event_and_person_attribute_search`
+
+   Both starters enable managed Cosmos attribute verification. Candidates that
+   fail generation or verification are excluded and listed in
+   `<output_directory>/<run_id>/cosmos_skipped.json`.
 
    Follow the [Image Attribute Augmentation Payload Guide](payload-guide.md)
    for detailed configuration instructions.
@@ -55,10 +61,13 @@ opening the Airflow UI, then return here to run Image Attribute Augmentation.
    1. From the Airflow home page, select **Dags** in the left sidebar.
    2. Select `image_attribute_augmentation_dag_k8s`.
    3. Click the trigger button in the upper-right corner.
-   4. Under **Run Parameters**, update
-      `ImageAttributeAugmentationDagPayloadConfig` with the payload from the
-      previous step. Leave other fields at their defaults.
+   4. Under **Run Parameters**, replace `payload` with the JSON from the
+      previous step.
    5. Select **Trigger** to start the run.
+
+   To trigger, monitor, and stop the run without the UI, follow
+   [Run Workflows with the Airflow REST API](../airflow-rest-api.md) with
+   `DAG_ID=image_attribute_augmentation_dag_k8s`.
 
 4. **Monitor or Stop an Active Run**:
 

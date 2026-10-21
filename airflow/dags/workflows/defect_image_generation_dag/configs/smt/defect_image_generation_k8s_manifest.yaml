@@ -1,0 +1,171 @@
+version: 0.0.1
+deployment:
+  dag_timeout: 14400
+  profiles:
+    k8s_gpu_task: &k8s_gpu_task
+      pool: k8s_rtx6000_1
+      pool_slots: 1
+      operator: K8sTaskOperator
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        startup_timeout_seconds: 900
+        gpu: true
+        image_pull_secrets:
+        - ngc-docker-registry-secret
+    k8s_anomalygen_task:
+      <<: *k8s_gpu_task
+      pool_slots: 2
+    k8s_gpu_endpoint:
+      pool: k8s_rtx6000_1
+      pool_slots: 1
+      operator: K8sServiceOperator
+      cleanup_operator: K8sCleanupOperator
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        gpu: true
+        model_cache_pvc: ngc-model-cache
+        image_pull_secrets:
+        - ngc-docker-registry-secret
+        inference_port: 8000
+        health_uri: /health
+        deployment_ready_timeout_seconds: 5400
+        poll_interval_seconds: 10
+    k8s_cpu_task:
+      pool: default_pool
+      pool_slots: 1
+      operator: K8sTaskOperator
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        startup_timeout_seconds: 900
+        image_pull_secrets:
+        - ngc-docker-registry-secret
+  components:
+    endpoints:
+      image_edit_service:
+        enabled: true
+        container_image: vllm/vllm-omni:v0.26.0
+        deployment_profile: k8s_gpu_endpoint
+        environment:
+          IMAGE_EDIT_MODEL: &image_edit_model nvidia/cdf-sim2real-smt-solderlight
+          HF_HOME: /config/models/huggingface
+          VLLM_ATTENTION_BACKEND: CUDNN_ATTN
+        # The Hugging Face repo keeps the diffusers pipeline under model/.
+        container_args: vllm-omni serve /config/models/cdf-sim2real-smt-solderlight-9e42b389/model
+          --served-model-name $(IMAGE_EDIT_MODEL) --omni --port 8000
+          --init-timeout 1800 --stage-init-timeout 1800
+        configuration:
+          inference_port: 8000
+          health_uri: /health
+    tasks:
+      image_edit_checkpoint_download:
+        enabled: true
+        container_image: vllm/vllm-omni:v0.26.0
+        deployment_profile: k8s_cpu_task
+        model_cache_pvc: ngc-model-cache
+        environment:
+          CHECKPOINT_HF_MODEL: *image_edit_model
+          CHECKPOINT_HF_REVISION: 9e42b3891f85975168f3cd84ecf365f2686e0f9a
+          CHECKPOINT_PATH: /config/models/cdf-sim2real-smt-solderlight-9e42b389
+          HF_HOME: /config/models/huggingface
+        secrets:
+          HF_TOKEN: '{{ var.value.hf_token }}'
+        configuration:
+          execution_timeout_seconds: 7200
+          container_command: |
+            python -c '
+            import os, sys
+            if os.environ.get("CHECKPOINT_DOWNLOAD_ENABLED", "true").lower() != "true":
+                sys.exit(0)
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=os.environ["CHECKPOINT_HF_MODEL"],
+                revision=os.environ["CHECKPOINT_HF_REVISION"],
+                local_dir=os.environ["CHECKPOINT_PATH"],
+            )
+            '
+      image_generation:
+        enabled: true
+        container_image: nvcr.io/nvidia/cdf-simulation:1.2.0
+        deployment_profile: k8s_gpu_task
+        environment:
+          ACCEPT_EULA: Y
+          PYTHONUNBUFFERED: '1'
+        secrets:
+          AWS_ACCESS_KEY_ID: '{{ var.value.aws_access_key_id }}'
+          AWS_SECRET_ACCESS_KEY: '{{ var.value.aws_secret_access_key }}'
+          AWS_REGION: '{{ var.value.aws_region }}'
+        volumes:
+        - name: dshm
+          mountPath: /dev/shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+        configuration:
+          execution_timeout_seconds: 7200
+          container_command: bash -c 'echo "$PCB_AOI_CONFIG_B64" | base64 -d > /tmp/image_generation_config.yaml
+            && exec /workspace/cdf-simulation/scripts/docker/entrypoint.sh config /tmp/image_generation_config.yaml
+            --execute'
+      augmentation:
+        max_concurrency: 16
+        enabled: true
+        container_image: nvcr.io/nvidia/cdf-augmentation:1.2.0
+        deployment_profile: k8s_cpu_task
+        environment:
+          LOG_LEVEL: INFO
+          UV_LINK_MODE: copy
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: '{{ var.value.multistorageclient_configuration_secret }}'
+          BUILD_NVIDIA_API_KEY: '{{ conn.nvcf_default.password }}'
+          NVIDIA_API_KEY: '{{ conn.nvcf_default.password }}'
+        configuration:
+          retries: 3
+          execution_timeout_seconds: 7200
+      anomaly_generation:
+        enabled: true
+        container_image: nvcr.io/nvidia/cdf-anomalygen:1.2.0
+        deployment_profile: k8s_anomalygen_task
+        environment:
+          LOG_LEVEL: INFO
+          HOME: /tmp
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: '{{ var.value.multistorageclient_configuration_secret }}'
+          HF_TOKEN: '{{ var.value.hf_token }}'
+          VLM_API_KEY: "{{ var.value.get('vlm_api_key', '') or conn.nvcf_default.password }}"
+        volumes:
+        - name: anomalygen-checkpoints
+          mountPath: /workspace/cdf-anomalygen/checkpoints
+          subPath: checkpoints
+          persistentVolumeClaim:
+            claimName: ngc-model-cache
+        - name: dshm
+          mountPath: /dev/shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+        - name: anomalygen-work
+          mountPath: /work
+          emptyDir:
+            sizeLimit: 64Gi
+        configuration:
+          retries: 0
+          execution_timeout_seconds: 10800
+          container_command: |-
+            python -c '
+            import base64, json, os, pathlib, sys
+            config = json.loads(base64.b64decode(os.environ["ANOMALYGEN_CONFIG_B64"]))
+            endpoints = json.loads(base64.b64decode(os.environ.get("ANOMALYGEN_ENDPOINTS_B64", "W10=")))
+            if endpoints:
+                key = os.environ.get("VLM_API_KEY")
+                if not key:
+                    raise SystemExit("VLM_API_KEY is required for configured AMG endpoints")
+                for endpoint in endpoints:
+                    endpoint["key"] = key
+                fd = os.open("/work/endpoints.yaml", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as registry:
+                    json.dump(endpoints, registry)
+            pathlib.Path("/work/run.yaml").write_text(json.dumps(config))
+            os.execv(sys.executable, [sys.executable, "-m", "anomalygen.scripts.run_pipeline", "--config", "/work/run.yaml"])
+            '

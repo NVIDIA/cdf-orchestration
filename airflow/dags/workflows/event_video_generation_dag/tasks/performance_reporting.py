@@ -21,9 +21,9 @@ from dags.shared.task_groups.reporting.task_timing import rate, stage_wall_secon
 from dags.shared.utils.msc_utils import write_file_to_directory
 from dags.workflows.event_video_generation_dag.models import EventVideoGenerationDagPayloadConfig
 
-REPORT_FILENAME = "paidf_orchestration_stats.yaml"
-HTML_REPORT_FILENAME = "paidf_orchestration_stats.html"
-REPORT_TYPE = "paidf_event_video_generation_orchestration_stats"
+REPORT_FILENAME = "cdf_orchestration_stats.yaml"
+HTML_REPORT_FILENAME = "cdf_orchestration_stats.html"
+REPORT_TYPE = "cdf_event_video_generation_orchestration_stats"
 SCHEMA_VERSION = 1
 
 _TASK_CATEGORY_RULES = (

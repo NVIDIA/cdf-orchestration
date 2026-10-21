@@ -9,10 +9,11 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from dags.shared.models import (
+    ATTRIBUTE_VERIFICATION_CHECKER,
     CosmosTaskConfig,
     ImageAttributeAugmentationTaskConfig,
     ServiceLifecycleServiceConfig,
-    ServiceLifecycleTaskConfig,
+    validate_checker_override_names,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,15 +21,17 @@ logger = logging.getLogger(__name__)
 # Placeholders, not real data locations: every run must override them from the payload.
 # They keep this model constructible without arguments so the DAG can render its Param
 # default at parse time.
-DEFAULT_INPUT_PATH = "s3://<your-input-bucket>/<your-workflow>/input"
-DEFAULT_IMAGE_ATTRIBUTE_AUGMENTATION_OUTPUT_DIRECTORY = (
-    "s3://<your-output-bucket>/<your-workflow>/output"
-)
+DEFAULT_INPUT_PATH = "s3://<your-input-bucket>/<your-workflow>"
+DEFAULT_IMAGE_ATTRIBUTE_AUGMENTATION_OUTPUT_DIRECTORY = "s3://<your-output-bucket>/<your-workflow>"
 
 
-class ImageAttributeAugmentationServiceLifecycleConfig(ServiceLifecycleTaskConfig):
+class ImageAttributeAugmentationServiceLifecycleConfig(BaseModel):
     """Lifecycle settings for services used by Image Attribute Augmentation."""
 
+    vlm_service: ServiceLifecycleServiceConfig = Field(
+        default_factory=ServiceLifecycleServiceConfig,
+        description="Shared VLM/LLM service lifecycle settings.",
+    )
     image_edit_service: ServiceLifecycleServiceConfig = Field(
         default_factory=ServiceLifecycleServiceConfig,
         description="Image-edit service lifecycle settings.",
@@ -62,15 +65,15 @@ class ImageAttributeAugmentationDagPayloadConfig(BaseModel):
         default=True,
         description=(
             "Top-level service mode switch. When true, provided external service URLs "
-            "are used. When false, internal VLM, LLM, and image-edit services are deployed."
+            "are used. When false, one shared VLM/LLM service and an image-edit service "
+            "are deployed."
         ),
     )
-
     service_lifecycle: ImageAttributeAugmentationServiceLifecycleConfig = Field(
         default_factory=ImageAttributeAugmentationServiceLifecycleConfig,
         description=(
-            "VLM/LLM/image-edit internal deployment flags. Each must be false when "
-            "external_services is true, and true when external_services is false."
+            "Shared VLM/LLM and image-edit deployment flags. Each must be false when "
+            "external_services is true and true when it is false."
         ),
     )
     cosmos: CosmosTaskConfig = Field(
@@ -132,17 +135,24 @@ class ImageAttributeAugmentationDagPayloadConfig(BaseModel):
         if sl_cfg is None:
             data["service_lifecycle"] = {
                 "vlm_service": {"enabled": deploy_internal},
-                "llm_service": {"enabled": deploy_internal},
                 "image_edit_service": {"enabled": deploy_internal},
             }
         elif isinstance(sl_cfg, dict):
-            for service_key in ("vlm_service", "llm_service", "image_edit_service"):
+            for service_key in ("vlm_service", "image_edit_service"):
                 entry = sl_cfg.get(service_key)
                 if entry is None:
                     sl_cfg[service_key] = {"enabled": deploy_internal}
                 elif isinstance(entry, dict) and entry.get("enabled") is None:
                     entry["enabled"] = deploy_internal
         return data
+
+    @model_validator(mode="after")
+    def check_cosmos_evaluator_checker_overrides(self):
+        validate_checker_override_names(
+            self.cosmos.checker_overrides,
+            {ATTRIBUTE_VERIFICATION_CHECKER},
+        )
+        return self
 
     @model_validator(mode="after")
     def check_service_lifecycle_matches_external_services(self):
@@ -153,18 +163,18 @@ class ImageAttributeAugmentationDagPayloadConfig(BaseModel):
                 "is true, and true when external_services is false"
             )
             self.service_lifecycle.vlm_service.enabled = expected
-        if self.service_lifecycle.llm_service.enabled != expected:
-            logger.warning(
-                "service_lifecycle.llm_service.enabled must be false when external_services "
-                "is true, and true when external_services is false"
-            )
-            self.service_lifecycle.llm_service.enabled = expected
         if self.service_lifecycle.image_edit_service.enabled != expected:
             logger.warning(
                 "service_lifecycle.image_edit_service.enabled must be false when external_services "
                 "is true, and true when external_services is false"
             )
             self.service_lifecycle.image_edit_service.enabled = expected
+
+        if not self.external_services:
+            # One deployed Qwen3.8 serves both multimodal and text-only requests.
+            for config in (self.cosmos, self.event_and_person_attribute_search):
+                config.llm_service_url = config.vlm_service_url
+                config.llm_model = config.vlm_model
 
         return self
 
@@ -185,6 +195,11 @@ class ImageAttributeAugmentationDagPayloadConfig(BaseModel):
                     "cosmos.external_services is true"
                 )
         if self.event_and_person_attribute_search.external_services:
+            if not self.event_and_person_attribute_search.vlm_service_url:
+                raise ValueError(
+                    "event_and_person_attribute_search.vlm_service_url is required when "
+                    "event_and_person_attribute_search.external_services is true"
+                )
             if not self.event_and_person_attribute_search.llm_service_url:
                 raise ValueError(
                     "event_and_person_attribute_search.llm_service_url is required when "

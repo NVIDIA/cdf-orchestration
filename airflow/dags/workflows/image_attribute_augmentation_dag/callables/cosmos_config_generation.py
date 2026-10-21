@@ -17,13 +17,25 @@ from yarl import URL
 
 from dags.shared.models import ConditionalVariableConfig, CosmosTaskConfig
 from dags.shared.task_groups.cosmos import load_cosmos_base_config
+from dags.shared.task_groups.cosmos_evaluator import (
+    ARBITRATOR_COMPONENT,
+    ATTRIBUTE_VERIFICATION_CHECKER,
+    COSMOS_EVALUATOR_STARTUP_GROUP_ID,
+    apply_checker_overrides,
+)
 from dags.shared.task_groups.input_preparation import require_prepared_input_from_xcom
-from dags.shared.task_groups.service_lifecycle import require_service_endpoint_from_xcom
+from dags.shared.task_groups.service_lifecycle import (
+    require_service_base_url_from_xcom,
+    require_service_endpoint_from_xcom,
+)
 from dags.shared.utils.msc_utils import write_file_to_directory
 
 IMAGE_ATTRIBUTE_AUGMENTATION_CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 IMAGE_ATTRIBUTE_AUGMENTATION_VERIFICATION_TEMPLATE_PATH = (
     IMAGE_ATTRIBUTE_AUGMENTATION_CONFIG_DIR / "cosmos_config.yaml"
+)
+IMAGE_ATTRIBUTE_AUGMENTATION_COSMOS_EVALUATOR_TEMPLATE_PATH = (
+    IMAGE_ATTRIBUTE_AUGMENTATION_CONFIG_DIR / "cosmos_evaluator_config.yaml"
 )
 
 
@@ -112,7 +124,77 @@ def _log_realized_distributions(samples: list[dict[str, str]]) -> None:
         )
 
 
-def _set_endpoints(config: dict[str, Any], cosmos_task_config: CosmosTaskConfig) -> None:
+def _enabled_cosmos_evaluator(config: dict[str, Any]) -> dict[str, Any] | None:
+    evaluators = config.get("evaluators")
+    if not isinstance(evaluators, list):
+        return None
+    for entry in evaluators:
+        if not isinstance(entry, dict):
+            continue
+        evaluator = entry.get("cosmos_evaluator")
+        if isinstance(evaluator, dict) and evaluator.get("enabled") is True:
+            return evaluator
+    return None
+
+
+def _enable_external_cosmos_evaluator(config: dict[str, Any]) -> None:
+    """Enable the configured evaluator when a caller provides its external URL."""
+    evaluators = config.get("evaluators")
+    cosmos_evaluator = (
+        next(
+            (
+                entry["cosmos_evaluator"]
+                for entry in evaluators
+                if isinstance(entry, dict) and isinstance(entry.get("cosmos_evaluator"), dict)
+            ),
+            None,
+        )
+        if isinstance(evaluators, list)
+        else None
+    )
+    if cosmos_evaluator is None:
+        raise AirflowFailException(
+            "cosmos_evaluator_service_url was provided, but the Image Attribute Augmentation "
+            "Cosmos config has no cosmos_evaluator configuration."
+        )
+
+    endpoint_id = cosmos_evaluator.get("endpoint_id")
+    if not isinstance(endpoint_id, str) or not endpoint_id.strip():
+        raise AirflowFailException(
+            "cosmos_evaluator_service_url was provided, but the Image Attribute Augmentation "
+            "cosmos_evaluator must define a non-empty string endpoint_id."
+        )
+
+    endpoints = config.get("endpoints")
+    if not isinstance(endpoints, list) or not any(
+        isinstance(endpoint, dict) and endpoint.get("id") == endpoint_id for endpoint in endpoints
+    ):
+        raise AirflowFailException(
+            "cosmos_evaluator_service_url was provided, but the Image Attribute Augmentation "
+            "Cosmos config has no matching evaluator endpoint."
+        )
+    cosmos_evaluator["enabled"] = True
+
+
+def _requires_cosmos_evaluator_service_url(config: dict[str, Any]) -> bool:
+    evaluator = _enabled_cosmos_evaluator(config)
+    if evaluator is None:
+        return False
+    endpoint_id = evaluator.get("endpoint_id")
+    endpoints = config.get("endpoints")
+    return isinstance(endpoints, list) and any(
+        isinstance(endpoint, dict)
+        and endpoint.get("id") == endpoint_id
+        and endpoint.get("url") == "<>"
+        for endpoint in endpoints
+    )
+
+
+def _set_endpoints(
+    config: dict[str, Any],
+    cosmos_task_config: CosmosTaskConfig,
+    cosmos_evaluator_service_url: str | None = None,
+) -> None:
     _ENDPOINT_SERVICE_FIELDS: dict[str, tuple[str, str | None]] = {
         "vlm": ("vlm_service_url", "vlm_model"),
         "llm": ("llm_service_url", "llm_model"),
@@ -121,11 +203,20 @@ def _set_endpoints(config: dict[str, Any], cosmos_task_config: CosmosTaskConfig)
     endpoints = config.get("endpoints")
     if not isinstance(endpoints, list):
         return
+    evaluator = _enabled_cosmos_evaluator(config)
+    evaluator_endpoint_id = evaluator.get("endpoint_id") if evaluator is not None else None
 
     for endpoint in endpoints:
         if not isinstance(endpoint, dict):
             continue
         endpoint_id = endpoint.get("id")
+        if endpoint_id == evaluator_endpoint_id and cosmos_evaluator_service_url is not None:
+            endpoint["url"] = cosmos_evaluator_service_url
+            if cosmos_task_config.cosmos_evaluator_service_url is not None:
+                endpoint["api_key_env"] = "COSMOS_API_KEY"
+            else:
+                endpoint.pop("api_key_env", None)
+            continue
         service_fields = _ENDPOINT_SERVICE_FIELDS.get(endpoint_id)
         if service_fields is None:
             continue
@@ -142,32 +233,61 @@ def _build_image_edit_config(
     input_media_path: str,
     output_base: str,
     cosmos_task_config: CosmosTaskConfig,
+    cosmos_evaluator_service_url: str | None = None,
 ) -> dict[str, Any]:
     config = copy.deepcopy(base_config)
-    config["data"] = [
-        {
-            "inputs": {"rgb": input_media_path},
-            "output": {
-                "video": f"{output_base}/output.jpg",
-                "caption": f"{output_base}/output.txt",
-                "metadata": f"{output_base}/output_metadata.json",
-            },
-        }
-    ]
-    _set_endpoints(config, cosmos_task_config)
+    output = {
+        "video": f"{output_base}/output.jpg",
+        "caption": f"{output_base}/output.txt",
+        "metadata": f"{output_base}/output_metadata.json",
+    }
+    evaluator = _enabled_cosmos_evaluator(config)
+    if evaluator is not None:
+        output["prefix"] = URL(output_base).path.strip("/")
+    config["data"] = [{"inputs": {"rgb": input_media_path}, "output": output}]
+    _set_endpoints(config, cosmos_task_config, cosmos_evaluator_service_url)
 
     llm_cfg = (config.get("captioning") or {}).get("llm")
+    verification_options: dict[str, Any] = {}
     if isinstance(llm_cfg, dict):
         llm_cfg["variables"] = {key: [value] for key, value in sampled_variables.items()}
         llm_cfg["verification_values"] = {
             key: [value] for key, value in sampled_base_variables.items()
         }
+        configured_options = llm_cfg.get("verification_options")
+        if isinstance(configured_options, dict):
+            verification_options = configured_options
+
+    if evaluator is not None:
+        checker_config = evaluator.get("config")
+        if isinstance(checker_config, dict):
+            selected_variables = checker_config.get("selected_variables")
+            if isinstance(selected_variables, dict):
+                selected_variables.clear()
+                selected_variables.update(
+                    {
+                        key: value
+                        for key, value in sampled_base_variables.items()
+                        if key not in {"shoe_type", "shoe_color"}
+                    }
+                )
+            variable_options = checker_config.get("variable_options")
+            if isinstance(variable_options, dict):
+                variable_options.clear()
+                variable_options.update(
+                    {
+                        key: value
+                        for key, value in verification_options.items()
+                        if key not in {"shoe_type", "shoe_color"}
+                    }
+                )
     return config
 
 
 def generate_image_attribute_augmentation_image_edit_configs(
     cosmos_config: str | None = None,
     run_id: str = "",
+    default_config_path: str | Path = IMAGE_ATTRIBUTE_AUGMENTATION_VERIFICATION_TEMPLATE_PATH,
     **context,
 ) -> list[str]:
     """Generate Image Attribute Augmentation image-edit configs and return their storage paths."""
@@ -177,12 +297,10 @@ def generate_image_attribute_augmentation_image_edit_configs(
         raise AirflowFailException(f"Payload validation failed: {e}") from e
 
     if not cosmos_task_config.external_services:
-        cosmos_task_config.vlm_service_url = require_service_endpoint_from_xcom(
-            context["ti"], "vlm_service"
-        )
-        cosmos_task_config.llm_service_url = require_service_endpoint_from_xcom(
-            context["ti"], "llm_service"
-        )
+        shared_endpoint = require_service_endpoint_from_xcom(context["ti"], "vlm_service")
+        cosmos_task_config.vlm_service_url = shared_endpoint
+        cosmos_task_config.llm_service_url = shared_endpoint
+        cosmos_task_config.llm_model = cosmos_task_config.vlm_model
         cosmos_task_config.image_edit_service_url = require_service_endpoint_from_xcom(
             context["ti"], "image_edit_service"
         )
@@ -191,13 +309,30 @@ def generate_image_attribute_augmentation_image_edit_configs(
     if cosmos_task_config.base_config_path:
         base_config = load_cosmos_base_config(
             base_config_path=cosmos_task_config.base_config_path,
-            default_path=IMAGE_ATTRIBUTE_AUGMENTATION_VERIFICATION_TEMPLATE_PATH,
+            default_path=default_config_path,
             description="Image Attribute Augmentation image-edit base configuration file",
         )
     else:
         base_config = _load_yaml_file(
-            str(IMAGE_ATTRIBUTE_AUGMENTATION_VERIFICATION_TEMPLATE_PATH),
+            str(default_config_path),
             "Image Attribute Augmentation image-edit base configuration file",
+        )
+    cosmos_evaluator_service_url = cosmos_task_config.cosmos_evaluator_service_url
+    if cosmos_evaluator_service_url is not None:
+        cosmos_evaluator_service_url = cosmos_evaluator_service_url.strip()
+        if not cosmos_evaluator_service_url:
+            raise AirflowFailException("cosmos_evaluator_service_url must not be empty.")
+        _enable_external_cosmos_evaluator(base_config)
+    apply_checker_overrides(
+        base_config,
+        cosmos_task_config.checker_overrides,
+        checker_names=(ATTRIBUTE_VERIFICATION_CHECKER,),
+    )
+    if cosmos_evaluator_service_url is None and _requires_cosmos_evaluator_service_url(base_config):
+        cosmos_evaluator_service_url = require_service_base_url_from_xcom(
+            context["ti"],
+            ARBITRATOR_COMPONENT,
+            task_group_id=COSMOS_EVALUATOR_STARTUP_GROUP_ID,
         )
     direct_config, lookup_config = cosmos_task_config.variable_distribution.split_variables()
     conditional_variables = cosmos_task_config.variable_distribution.conditional_variables
@@ -229,6 +364,7 @@ def generate_image_attribute_augmentation_image_edit_configs(
                 input_media_path=prepared_video.video_path,
                 output_base=output_base,
                 cosmos_task_config=cosmos_task_config,
+                cosmos_evaluator_service_url=cosmos_evaluator_service_url,
             )
             sample_idx += 1
 

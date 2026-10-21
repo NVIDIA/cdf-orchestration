@@ -1,0 +1,43 @@
+FROM apache/airflow:3.3.2-python3.11 AS base
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+USER root
+RUN curl -fsSL https://raw.githubusercontent.com/NVIDIA/OSMO/refs/heads/main/install.sh | bash \
+    && ln -sf /usr/local/osmo/osmo /usr/local/bin/osmo
+# rsync ships with the base image but is unused here (scripts/copy_tree.sh uses tar
+# instead); drop it to close CVE-2026-70460, CVE-2026-70452, CVE-2026-53793,
+# CVE-2026-53791, CVE-2026-53790 (no Debian security patch is available yet, so
+# removal is the only mitigation).
+RUN apt-get purge -y --auto-remove rsync \
+    && rm -rf /var/lib/apt/lists/*
+# The base image's system Python (used to bootstrap /home/airflow/.local) carries
+# an older setuptools whose vendored wheel is CVE-flagged (GHSA-8rrh-rw8j-w5fx);
+# the airflow venv's own setuptools is already current. Upgrade it too.
+RUN /usr/python/bin/pip3 install --no-cache-dir --upgrade setuptools
+USER airflow
+
+WORKDIR /opt/airflow
+
+# Install SDG runtime Python dependencies, then bake DAGs and plugins into the image.
+COPY --chown=airflow:root airflow/pyproject.toml /opt/airflow/
+# The upstream image bundles optional providers that these DAGs do not use.
+# Remove Google (CVE-2026-49297, CVE-2026-45361, CVE-2023-25691), Databricks
+# (CVE-2026-32794), HDFS (CVE-2023-41267), and Hive
+# (CVE-2023-37415, CVE-2023-28706, CVE-2023-35797, CVE-2022-46421,
+# CVE-2022-41131), plus MySQL (CVE-2023-22884) after dependency installation.
+# ray is an orphaned transitive dependency of the removed Google provider (it is
+# not used by these DAGs); drop it too to close the bundled httpcore5 CVE
+# (GHSA-hf6x-8p5f-cgmf).
+RUN pip install --no-cache-dir . \
+    && pip uninstall --yes \
+        apache-airflow-providers-google \
+        apache-airflow-providers-databricks \
+        apache-airflow-providers-apache-hdfs \
+        apache-airflow-providers-apache-hive \
+        apache-airflow-providers-mysql \
+        ray \
+    && pip check
+
+COPY --chown=airflow:root airflow/dags /opt/airflow/dags
+COPY --chown=airflow:root airflow/plugins /opt/airflow/plugins

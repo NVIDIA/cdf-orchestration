@@ -47,4 +47,3 @@ Selector labels
 app.kubernetes.io/name: {{ include "sdg-workflow-controller.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
-

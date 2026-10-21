@@ -171,9 +171,7 @@ class XComWaitTrigger(BaseTrigger):
                 elapsed = time.monotonic() - start
                 if elapsed >= self.timeout_seconds:
                     yield TriggerEvent(
-                        {
-                            "error": f"Timeout after {self.timeout_seconds}s waiting for XCom(s)"
-                        }
+                        {"error": f"Timeout after {self.timeout_seconds}s waiting for XCom(s)"}
                     )
                     return
 

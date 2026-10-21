@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Reporting a Vulnerability
 
-NVIDIA is committed to addressing security issues in this project responsibly. If you believe you have found a security vulnerability in **PAIDF Orchestration**, please report it to the NVIDIA Product Security Incident Response Team (PSIRT) rather than opening a public issue or pull request.
+NVIDIA is committed to addressing security issues in this project responsibly. If you believe you have found a security vulnerability in **CDF Orchestration**, please report it to the NVIDIA Product Security Incident Response Team (PSIRT) rather than opening a public issue or pull request.
 
 - **Email:** [psirt@nvidia.com](mailto:psirt@nvidia.com)
 - **Web:** [https://www.nvidia.com/en-us/security/](https://www.nvidia.com/en-us/security/)
@@ -29,7 +29,7 @@ This policy covers:
 - Workflow code and plugin integrations under `airflow/dags/` and `airflow/plugins/`.
 - Deployment and runtime assets under `deploy/`.
 - Scripts and automation under `scripts/`, `make/`, and `nfs/`.
-- Documentation and sample payloads under `docs/` and `payload/`.
+- Documentation and sample payloads under `docs/` and `payloads/`.
 
 It does not cover third-party software, container images, or services referenced by this project. Vulnerabilities in those should be reported to their respective maintainers; please still notify PSIRT if the issue is exploitable through this project.
 

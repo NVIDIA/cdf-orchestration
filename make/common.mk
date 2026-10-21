@@ -17,7 +17,8 @@ CHART_PATH = deploy
 VALUES_DEV = deploy/values.yaml
 SECRET_VALUES_DEV = deploy/secret_values_dev.yaml
 SECRETS_ENV = secrets.env
-AIRFLOW_PYTHON_DEPS_DIR = $(CURDIR)/.airflow-python-deps
-AWS_S3_DAG_BUCKET ?= sdg-workflow-eks-test
+# Replace with an NGC org/team path that NGC_API_KEY in secrets.env can push.
+AIRFLOW_IMAGE_REPOSITORY ?= nvcr.io/<your-org>/<your-team>/sdg-workflow-airflow
+AIRFLOW_IMAGE_TAG ?= latest
 PYTHON_REQUIRED_MAJOR = 3
-PYTHON_REQUIRED_MINOR = 10
+PYTHON_REQUIRED_MINOR = 11

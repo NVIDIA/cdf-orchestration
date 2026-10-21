@@ -1,0 +1,109 @@
+version: 0.0.1
+
+deployment:
+  dag_timeout: 172800 # 2 days
+  profiles:
+    osmo_rtx6000:
+      pool: osmo_rtx6000_1
+      pool_slots: 1
+      operator: OsmoTaskOperator
+      configuration:
+        osmo_pool: "{{ var.value.get('osmo_pool', '') }}"
+        osmo_priority: NORMAL
+        osmo_token: "{{ var.value.osmo_token }}"
+        osmo_url: "{{ var.value.get('osmo_url', '') }}"
+        osmo_gpu: 1
+        osmo_cpu: 11
+        osmo_memory: "100Gi"
+        osmo_storage: "100Gi"
+        poll_interval_seconds: 30
+
+  components:
+
+    tasks:
+      super_resolution:
+        container_image: nvcr.io/nvidia/cdf-super-resolution-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          container_command: >-
+            /bin/sh -c 'export LD_LIBRARY_PATH="/opt/media-runtime/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; exec main "$@"' _
+          max_runtime_duration_iso: PT2H
+
+      detection_and_tracking:
+        container_image: nvcr.io/nvidia/cdf-detection-and-tracking-rfdetr-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          container_command: main
+          max_runtime_duration_iso: PT2H
+
+      captioning:
+        container_image: nvcr.io/nvidia/cdf-captioning-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          container_command: main
+          max_runtime_duration_iso: PT2H
+
+      visual_qa:
+        container_image: nvcr.io/nvidia/cdf-visual-qa-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          container_command: main
+          max_runtime_duration_iso: PT2H
+
+      reasoning:
+        container_image: nvcr.io/nvidia/cdf-reasoning-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          container_command: main
+          max_runtime_duration_iso: PT2H
+
+      training_export:
+        container_image: nvcr.io/nvidia/cdf-training-export-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          container_command: main
+          max_runtime_duration_iso: PT2H
+
+      augmentation:
+        max_concurrency: 1
+        container_image: nvcr.io/nvidia/cdf-augmentation:1.2.0
+        deployment_profile: osmo_rtx6000
+        environment:
+          UV_LINK_MODE: copy
+          HF_HOME: "/tmp/hf_cache"
+          HF_CACHE_SEED_DIR: "{{ var.value.get('osmo_hf_cache_seed_dir', '') }}"
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          BUILD_NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          VLM_API_KEY: "{{ conn.nvcf_default.password }}"
+          LLM_API_KEY: "{{ conn.nvcf_default.password }}"
+          COSMOS_API_KEY: "{{ conn.nvcf_default.password }}"
+          HF_TOKEN: "{{ var.value.hf_token }}"
+        configuration:
+          # With osmo_hf_cache_seed_dir set, link that pre-populated Hugging Face cache into
+          # HF_HOME and run offline; otherwise download models with HF_TOKEN.
+          container_command: >-
+            bash -c 'set -e; mkdir -p "$HF_HOME";
+            if [ -n "$HF_CACHE_SEED_DIR" ]; then
+            if [ ! -d "$HF_CACHE_SEED_DIR" ]; then echo "HF cache seed directory $HF_CACHE_SEED_DIR (Airflow variable osmo_hf_cache_seed_dir) does not exist on this OSMO pool" >&2; exit 1; fi;
+            cp -rs "$HF_CACHE_SEED_DIR"/. "$HF_HOME"/; export HF_HUB_OFFLINE=1; fi;
+            exec uv run --no-sync /workspace/modules/cli.py "$@"' _

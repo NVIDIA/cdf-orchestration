@@ -131,7 +131,8 @@ class ImageAttributeAugmentationTaskGroup:
             )
             llm_base_url = task_config.llm_service_url
             if not task_config.external_services:
-                llm_base_url = require_service_endpoint_from_xcom(context["ti"], "llm_service")
+                llm_base_url = require_service_endpoint_from_xcom(context["ti"], "vlm_service")
+                task_config = task_config.model_copy(update={"llm_model": task_config.vlm_model})
 
             inputs = pull_and_validate_xcom(
                 ti=context["ti"],

@@ -1,0 +1,56 @@
+{
+  "api_version": "1.0",
+  "pipeline_mode": "defect",
+  "enable_performance_reporting": true,
+  "output_directory": "s3://<bucket-name>/path/to/output",
+  "defect_generation": {
+    "defaults": {
+      "anomaly_generation": {
+        "staging": {
+          "fetch": {
+            "input": [
+              "s3://<bucket-name>/path/to/assets/UC1/",
+              "s3://<bucket-name>/path/to/prepared-components/"
+            ],
+            "recipe": "s3://<bucket-name>/path/to/recipe/exp_texture_ft_pcb.yaml",
+            "checkpoint": "s3://<bucket-name>/path/to/finetuned/UC1/iter_000015000.pt"
+          }
+        },
+        "amg_gen_model": "<your-vlm-model>",
+        "amg_judge_model": "<your-vlm-model>",
+        "amg_endpoints": [
+          {
+            "model": "<your-vlm-model>",
+            "base_url": "https://<your-vlm-endpoint>/v1"
+          }
+        ]
+      }
+    },
+    "configurations": [
+      {
+        "id": "ic-bridge",
+        "anomaly_generation": {
+          "per_defect_counts": {
+            "IC+bridge": 1
+          }
+        }
+      },
+      {
+        "id": "passive-excess-solder",
+        "anomaly_generation": {
+          "per_defect_counts": {
+            "passive_component+excess_solder": 1
+          }
+        }
+      },
+      {
+        "id": "passive-missing",
+        "anomaly_generation": {
+          "per_defect_counts": {
+            "passive_component+missing": 1
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "input_path": "s3://<bucket-name>/path/to/input.mp4",
+  "max_videos": 1,
+  "output_directory": "s3://<bucket-name>/path/to/output",
+  "external_services": true,
+  "service_lifecycle": {
+    "vlm_service": {
+      "enabled": false
+    },
+    "llm_service": {
+      "enabled": false
+    },
+    "cosmos_transfer_service": {
+      "enabled": false
+    }
+  },
+  "cosmos": {
+    "checker_overrides": {
+      "metropolis.hallucination": true,
+      "metropolis.attribute_verification": true,
+      "metropolis.physical_plausibility": false
+    },
+    "num_augmentation": 1,
+    "vlm_service_url": "https://<your-vlm-endpoint>/v1",
+    "vlm_model": "Qwen/Qwen3.8-27B-FP8",
+    "llm_service_url": "https://<your-llm-endpoint>/v1",
+    "llm_model": "Qwen/Qwen3.8-27B-FP8",
+    "cosmos_transfer_service_url": "https://<your-cosmos-transfer-endpoint>",
+    "cosmos_transfer_model": "nvidia/Cosmos3-Nano",
+    "cosmos_evaluator_service_url": "https://<your-cosmos-evaluator-endpoint>",
+    "variable_distribution": {
+      "variables": {
+        "weather": {
+          "cloudy": 1.0
+        },
+        "time_of_day": {
+          "morning": 1.0
+        }
+      }
+    }
+  },
+  "captioning": {
+    "vlm_service_url": "https://<your-vlm-endpoint>/v1",
+    "vlm_model": "Qwen/Qwen3.8-27B-FP8",
+    "llm_service_url": "https://<your-llm-endpoint>/v1",
+    "llm_model": "Qwen/Qwen3.8-27B-FP8",
+    "enable_llm_summary": true
+  },
+  "visual_qa": {
+    "vlm_service_url": "https://<your-vlm-endpoint>/v1",
+    "vlm_model": "Qwen/Qwen3.8-27B-FP8",
+    "llm_service_url": "https://<your-llm-endpoint>/v1",
+    "llm_model": "Qwen/Qwen3.8-27B-FP8",
+    "generation_mode": "window-vlm-llm",
+    "question_bank_file": "s3://<bucket-name>/path/to/question_bank.json",
+    "input_source": "auto",
+    "include_reasoning": true,
+    "media_mode": "auto"
+  },
+  "training_export": {
+    "formats": [
+      "tao-vl-reason-v1.0"
+    ]
+  },
+  "reasoning": {
+    "llm_service_url": "https://<your-llm-endpoint>/v1",
+    "llm_model": "Qwen/Qwen3.8-27B-FP8",
+    "reasoning_mode": "keep"
+  },
+  "super_resolution": {},
+  "detection_and_tracking": {
+    "allow_model_download": true
+  }
+}

@@ -5,9 +5,12 @@
 
 from __future__ import annotations
 
+import os
 from typing import Optional, Tuple
 
 DEFAULT_KUBERNETES_CONN_ID = "kubernetes_remote"
+
+CONTEXT_OVERRIDE_ENV_VAR = "K8S_CLUSTER_CONTEXT_OVERRIDE"
 
 
 def resolve_kubernetes_backend(
@@ -25,4 +28,5 @@ def resolve_kubernetes_backend(
     """
     if in_cluster is True:
         return None, None
-    return kubernetes_conn_id, context
+    override = os.environ.get(CONTEXT_OVERRIDE_ENV_VAR)
+    return kubernetes_conn_id, override or context

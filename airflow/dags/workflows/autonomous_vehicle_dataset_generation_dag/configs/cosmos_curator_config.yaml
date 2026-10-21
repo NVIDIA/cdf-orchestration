@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+pipeline: "split"
+multi_cam: false
+generate_captions: false
+
+splitting_algorithm: "fixed-stride"
+fixed_stride_split_duration: 9.3
+fixed_stride_min_clip_length_s: 9.3
+
+enhance_captions: false
+video_classifier: false
+motion_filter: "disable"
+aesthetic_threshold: null
+vlm_filter: "disable"
+artificial_text_filter: false
+sam3: false
+event_captioning: false
+super_resolution: false
+
+embedding_batch_size: 4
+
+upload_clips: true
+write_all_caption_json: false
+perf_profile: false

@@ -8,8 +8,13 @@ from dags.shared.models.manifest import (
     TaskComponent,
 )
 from dags.shared.models.payload import (
+    ATTRIBUTE_VERIFICATION_CHECKER,
+    COSMOS_EVALUATOR_CHECKERS,
+    HALLUCINATION_CHECKER,
+    PHYSICAL_PLAUSIBILITY_CHECKER,
     CaptioningTaskConfig,
     ConditionalVariableConfig,
+    CosmosEvaluatorCheckerOverrides,
     CosmosTaskConfig,
     DetectionAndTrackingTaskConfig,
     ImageAttributeAugmentationTaskConfig,
@@ -20,6 +25,7 @@ from dags.shared.models.payload import (
     TrainingExportTaskConfig,
     VariableDistribution,
     VisualQATaskConfig,
+    validate_checker_override_names,
 )
 from dags.shared.models.xcom import (
     CosmosOutputResult,
@@ -35,8 +41,13 @@ __all__ = [
     "ManifestConfig",
     "TaskComponent",
     # Payload Models
+    "ATTRIBUTE_VERIFICATION_CHECKER",
+    "COSMOS_EVALUATOR_CHECKERS",
+    "HALLUCINATION_CHECKER",
+    "PHYSICAL_PLAUSIBILITY_CHECKER",
     "CaptioningTaskConfig",
     "ConditionalVariableConfig",
+    "CosmosEvaluatorCheckerOverrides",
     "CosmosTaskConfig",
     "DetectionAndTrackingTaskConfig",
     "ImageAttributeAugmentationTaskConfig",
@@ -47,6 +58,7 @@ __all__ = [
     "TrainingExportTaskConfig",
     "VariableDistribution",
     "VisualQATaskConfig",
+    "validate_checker_override_names",
     # XCom Models
     "CosmosOutputResult",
     "EndpointXComValue",

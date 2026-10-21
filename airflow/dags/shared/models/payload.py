@@ -12,6 +12,7 @@ from pydantic import (
     ConfigDict,
     Field,
     RootModel,
+    StrictBool,
     StrictFloat,
     StringConstraints,
     field_validator,
@@ -19,16 +20,27 @@ from pydantic import (
     model_validator,
 )
 
-DEFAULT_VLM_MODEL = "Qwen/Qwen3-VL-30B-A3B-Instruct-FP8"
-DEFAULT_LLM_MODEL = "Qwen/Qwen2.5-14B-Instruct"
+DEFAULT_VLM_MODEL = "Qwen/Qwen3.8-27B-FP8"
+DEFAULT_LLM_MODEL = "Qwen/Qwen3.8-27B-FP8"
 DEFAULT_IMAGE_EDIT_MODEL = "Qwen/Qwen-Image-Edit-2511"
 DEFAULT_COSMOS_TRANSFER_MODEL = "cosmos-transfer2.5"
 DEFAULT_OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
 
+HALLUCINATION_CHECKER = "metropolis.hallucination"
+ATTRIBUTE_VERIFICATION_CHECKER = "metropolis.attribute_verification"
+PHYSICAL_PLAUSIBILITY_CHECKER = "metropolis.physical_plausibility"
+COSMOS_EVALUATOR_CHECKERS = frozenset(
+    {
+        HALLUCINATION_CHECKER,
+        ATTRIBUTE_VERIFICATION_CHECKER,
+        PHYSICAL_PLAUSIBILITY_CHECKER,
+    }
+)
+
 # Placeholders, not working endpoints: every run must override them from the payload.
 # They exist so the payload model stays constructible without arguments, which the DAGs
 # rely on to render their Param defaults at parse time.
-DEFAULT_OUTPUT_DIRECTORY = "s3://<your-output-bucket>/<your-workflow>/output"
+DEFAULT_OUTPUT_DIRECTORY = "s3://<your-output-bucket>/<your-workflow>"
 DEFAULT_VLM_SERVICE_URL = "https://<your-vlm-endpoint>/v1"
 DEFAULT_LLM_SERVICE_URL = "https://<your-llm-endpoint>/v1"
 DEFAULT_IMAGE_EDIT_SERVICE_URL = "https://<your-image-edit-endpoint>/v1"
@@ -37,6 +49,18 @@ DEFAULT_VISUAL_QA_QUESTION_BANK_FILE = "s3://<your-bucket>/question_bank.json"
 
 NonEmptyString: TypeAlias = Annotated[str, StringConstraints(min_length=1, strict=True)]
 NonNegativeWeight: TypeAlias = Annotated[StrictFloat, Field(ge=0)]
+CosmosEvaluatorCheckerOverrides: TypeAlias = dict[NonEmptyString, StrictBool]
+
+
+def validate_checker_override_names(
+    checker_overrides: CosmosEvaluatorCheckerOverrides,
+    allowed_checker_names: set[str] | frozenset[str],
+) -> CosmosEvaluatorCheckerOverrides:
+    """Require checker overrides to name only checkers supported by the caller."""
+    unsupported = sorted(set(checker_overrides) - allowed_checker_names)
+    if unsupported:
+        raise ValueError(f"Unsupported Cosmos Evaluator checker overrides: {unsupported}")
+    return checker_overrides
 
 
 def default_variable_distribution() -> dict[str, Any]:
@@ -493,6 +517,17 @@ class CosmosTaskConfig(BaseModel):
         default=DEFAULT_COSMOS_TRANSFER_SERVICE_URL,
         description="Direct URL for the Cosmos Transfer service.",
     )
+    cosmos_evaluator_service_url: Optional[str] = Field(
+        default=None,
+        description="Direct root URL for an external Cosmos Evaluator Arbitrator service.",
+    )
+    checker_overrides: CosmosEvaluatorCheckerOverrides = Field(
+        default_factory=dict,
+        description=(
+            "Per-checker execution overrides applied to the selected Cosmos configuration. "
+            "False removes a configured checker; true retains it."
+        ),
+    )
     vlm_model: Optional[str] = Field(
         default=DEFAULT_VLM_MODEL,
         description="Model name for the VLM service.",
@@ -538,3 +573,8 @@ class CosmosTaskConfig(BaseModel):
             "deterministic single-image Image Attribute Augmentation distribution."
         ),
     )
+
+    @field_validator("checker_overrides")
+    @classmethod
+    def validate_checker_overrides(cls, value):
+        return validate_checker_override_names(value, COSMOS_EVALUATOR_CHECKERS)

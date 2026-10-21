@@ -18,6 +18,9 @@ Use one of these as your starting point. Both examples spell out `cosmos` and
   "external_services": false,
   "max_imgs": 1,
   "cosmos": {
+    "checker_overrides": {
+      "metropolis.attribute_verification": true
+    },
     "num_augmentation": 1,
     "variable_distribution": {
       "variables": {
@@ -48,6 +51,9 @@ Use one of these as your starting point. Both examples spell out `cosmos` and
     "vlm_service_url": "https://<your-vlm-endpoint>/v1",
     "llm_service_url": "https://<your-llm-endpoint>/v1",
     "image_edit_service_url": "https://<your-image-edit-endpoint>/v1",
+    "checker_overrides": {
+      "metropolis.attribute_verification": true
+    },
     "num_augmentation": 1,
     "variable_distribution": {
       "variables": {
@@ -68,7 +74,13 @@ Use one of these as your starting point. Both examples spell out `cosmos` and
 }
 ```
 
-## Required Fields At A Glance
+Both examples use the workflow's managed Cosmos Evaluator for attribute
+verification. To use an existing evaluator instead, set
+`cosmos.cosmos_evaluator_service_url` to its Arbitrator root URL. Evaluator
+placement is independent of `external_services`, which controls the VLM/LLM
+and image-edit endpoints.
+
+## Required Fields at a Glance
 
 Every field carries a default, so validation will not reject a payload that
 omits these. The shipped defaults for locations and endpoints are **non-working
@@ -87,12 +99,14 @@ Set when `external_services=true` (or omitted, since the default is `true`):
 - `cosmos.vlm_service_url`
 - `cosmos.llm_service_url`
 - `cosmos.image_edit_service_url`
+- `event_and_person_attribute_search.vlm_service_url`
 - `event_and_person_attribute_search.llm_service_url`
 
-Set nothing extra when `external_services=false`: the services are deployed
-along with the workflow, no endpoint URLs apply, and `cosmos` and
-`event_and_person_attribute_search` can be omitted entirely because the DAG
-builds them from top-level values.
+Set nothing extra for VLM/LLM or image-edit endpoints when
+`external_services=false`: the workflow deploys one shared VLM/LLM service and
+one image-edit service. `cosmos` and `event_and_person_attribute_search` can be
+omitted because the DAG builds them from top-level values. The Cosmos Evaluator
+is configured separately as described in [Cosmos Evaluator](#cosmos-evaluator).
 
 Consistency constraints:
 
@@ -116,25 +130,29 @@ Consistency constraints:
   `augmented_data.json` in that directory is the canonical summary manifest.
   The default is a placeholder path that does not exist.
 - `external_services` (**boolean, optional**, default: `true`): Service mode.
-  Set `false` to deploy internal services, `true` to call your endpoints. There
-  are no top-level `vlm`/`llm` URL fields.
+  Set `false` to deploy a shared VLM/LLM service and an image-edit service;
+  set `true` to call your endpoints. This switch does not select managed versus
+  external Cosmos Evaluator. There are no top-level `vlm`/`llm` URL fields.
 - `max_imgs` (**integer, optional**, default: `1`): Maximum number of person-ID
-  folders to process. `0` or negative means process all.
+  folders to process. `null`, `0`, or a negative value means process all.
 - `service_lifecycle` (**object, optional**): Internal service deployment flags.
-  Usually omitted; Image Attribute Augmentation auto-populates from `external_services`. Provide it only
-  when you want to override per-service replica counts.
+  Usually omitted; Image Attribute Augmentation auto-populates it from
+  `external_services`. Provide it only when you want to override per-service
+  replica counts.
 - `cosmos` (**object, optional**): Augmentation task config: how many
-  augmentations to generate per person ID and which outfit attributes to sample.
+  augmentation candidates to attempt per person ID and which outfit attributes
+  to sample.
   Set it when `external_services=true` so it carries real endpoint URLs, since
-  the shipped URL defaults are placeholders. See
+  the shipped URL defaults are placeholders. Refer to
   [`cosmos` Fields](#cosmos-fields-augmentation).
 - `event_and_person_attribute_search` (**object, optional**): Attribute search
   task config: the pipeline mode and the models used to label augmented images.
-  Set it when `external_services=true` so it carries a real `llm_service_url`.
-  See
+  Set it when `external_services=true` so it carries real `vlm_service_url` and
+  `llm_service_url` values.
+  Refer to
   [`event_and_person_attribute_search` Fields](#event_and_person_attribute_search-fields).
 - `enable_performance_reporting` (**boolean, optional**, default: `false`):
-  Turns the orchestration report on. See
+  Turns the orchestration report on. Refer to
   [Performance Reporting](#performance-reporting).
 
 ## `service_lifecycle` (Internal Service Overrides)
@@ -144,18 +162,20 @@ service replica counts.
 
 Fields:
 
-- `vlm_service`, `llm_service`, `image_edit_service` (objects)
+- `vlm_service` (shared VLM/LLM) and `image_edit_service` (objects)
 - `enabled` (**bool, optional**)
 - `replicas` (**int, optional**, default: `1`, minimum: `1`)
 
 Defaults from top-level `external_services`:
 
-- If `external_services=false`, Image Attribute Augmentation enables all three internal services by default.
-- If `external_services=true`, Image Attribute Augmentation disables all three internal services by default.
+- If `external_services=false`, Image Attribute Augmentation enables both
+  internal services by default.
+- If `external_services=true`, Image Attribute Augmentation disables both
+  internal services by default.
 
-If you set `enabled` values that conflict with top-level `external_services`, Image Attribute Augmentation
-normalizes `enabled` to match top-level mode during validation (and logs a
-warning). Replica counts you set are kept.
+If you set `enabled` values that conflict with top-level `external_services`,
+Image Attribute Augmentation normalizes `enabled` to match top-level mode during
+validation and logs a warning. Replica counts you set are kept.
 
 Example override:
 
@@ -164,37 +184,84 @@ Example override:
   "external_services": false,
   "service_lifecycle": {
     "vlm_service": { "replicas": 2 },
-    "llm_service": { "replicas": 2 },
     "image_edit_service": { "replicas": 4 }
   }
 }
 ```
 
+There is no `service_lifecycle.llm_service` field. In internal mode,
+`vlm_service` serves both multimodal and text-only requests; an `llm_service`
+entry is ignored as an unknown field.
+
 ## `cosmos` Fields (Augmentation)
 
 - `num_augmentation` (**integer, optional**, default: `1`): Number of
-  augmentations per person ID.
+  augmentation candidates attempted per person ID.
 - `vlm_service_url`, `llm_service_url`, `image_edit_service_url`
   (**string, conditionally required**): Required when `external_services=true`.
 - `vlm_model`, `llm_model`, `image_edit_model` (**string, optional**): Model
   IDs sent to endpoints. Use values compatible with your deployed
   containers/endpoints.
 - Default values used when omitted:
-  - `vlm_model`: `Qwen/Qwen3-VL-30B-A3B-Instruct-FP8`
-  - `llm_model`: `Qwen/Qwen2.5-14B-Instruct`
+  - `vlm_model`: `Qwen/Qwen3.8-27B-FP8`
+  - `llm_model`: `Qwen/Qwen3.8-27B-FP8`
   - `image_edit_model`: `Qwen/Qwen-Image-Edit-2511`
 - Specify these fields when your endpoint/container expects model IDs that are
   different from the defaults, or when you want to override models per run.
 - `variable_distribution` (**object, optional**): Controls attribute variety.
   If omitted, Image Attribute Augmentation uses a deterministic default outfit.
-  If supplied, it must define all six clothing attributes.
+  A supplied object replaces that default; only the attributes present in the
+  supplied object are sampled.
+- `base_config_path` (**string, optional**): MSC-readable URI (`s3://`,
+  `http://`, or `https://`) for a custom Cosmos YAML configuration. Omit it to
+  use the bundled configuration. A custom configuration also determines which
+  evaluator checks are available.
+- `cosmos_evaluator_service_url` (**string, optional**): Root URL for an
+  existing Cosmos Evaluator Arbitrator. When omitted and the selected Cosmos
+  configuration enables evaluation, the DAG deploys the managed evaluator
+  services declared in its Kubernetes manifest.
+- `checker_overrides` (**object, optional**): Per-run checker switches. This DAG
+  accepts only `metropolis.attribute_verification`, with a strict boolean value.
 
-> **Internal image-edit replicas and pool size:** If you deploy more than one
+> **Internal image-edit replicas and concurrency:** If you deploy more than one
 > internal image-edit replica (`service_lifecycle.image_edit_service.replicas`),
-> set `iaa_internal_image_edit_service_pool.slots` in `deploy/values.yaml` to the
-> same number. Otherwise Airflow limits throughput to the lower pool size.
-> Apply with `make install sdg-controller`. See
+> set `max_concurrency` on the augmentation task in the deployment manifest to
+> the same number. Otherwise Airflow limits throughput to that cap. Rebuild and
+> roll the Airflow image after changing the manifest. Refer to
 > [Scale internal model throughput](../advanced-usage.md#scale-internal-model-throughput).
+
+### Cosmos Evaluator
+
+The bundled Cosmos configuration enables
+`metropolis.attribute_verification` as a quality gate. The default empty
+`checker_overrides` object leaves that configuration unchanged. To state the
+default explicitly:
+
+```json
+{
+  "cosmos": {
+    "checker_overrides": {
+      "metropolis.attribute_verification": true
+    }
+  }
+}
+```
+
+Set the value to `false` to remove the checker for that run. If no checks remain,
+the Cosmos Evaluator provider and its managed services are skipped. Setting a
+checker to `true` retains it; it cannot add a checker that is absent from a
+custom `base_config_path`. Unsupported checker names fail payload validation.
+
+With no `cosmos_evaluator_service_url`, the DAG deploys the managed evaluator
+stack when an effective checker remains. Supplying the URL disables that
+managed stack and, when an effective checker remains, sends requests to the
+external Arbitrator instead.
+
+Each generated candidate is checked before attribute search. Failed generation
+or attribute verification removes that candidate from downstream processing and
+records the reason in
+`<output_directory>/<run_id>/cosmos_skipped.json`. The run fails if no candidate
+passes.
 
 ### `variable_distribution`
 
@@ -205,28 +272,31 @@ Use this to control how outfit attributes are sampled.
   another sampled attribute.
 
 Supplying `variable_distribution` **replaces** the built-in distribution rather
-than merging with it. Therefore, it must define all six clothing attributes:
-`top_outer_color`, `top_outer_type`, `bottom_type`, `bottom_color`,
-`shoe_type`, and `shoe_color`. An attribute can appear in either `variables` or
-`conditional_variables`; together, those objects must cover all six. Omit
-`variable_distribution` entirely to use the shipped default distribution.
+than merging with it. The schema permits a subset of attributes; only supplied
+attributes are sampled and passed into the generated Cosmos configuration. For
+a complete outfit description, include `top_outer_color`, `top_outer_type`,
+`bottom_type`, `bottom_color`, `shoe_type`, and `shoe_color`. An attribute can
+appear in either `variables` or `conditional_variables`. Omit
+`variable_distribution` entirely to use the default outfit.
 
 ```json
 {
-  "variable_distribution": {
-    "variables": {
-      "top_outer_color": { "black": 0.34, "blue": 0.33, "red": 0.33 },
-      "top_outer_type": { "hoodie": 0.5, "vest": 0.5 },
-      "bottom_type": { "jeans": 1.0 },
-      "bottom_color": { "blue": 1.0 },
-      "shoe_type": { "boots": 0.5, "sneakers": 0.5 }
-    },
-    "conditional_variables": {
-      "shoe_color": {
-        "depends_on": "shoe_type",
-        "distributions": {
-          "boots": { "black": 0.6, "brown": 0.4 },
-          "sneakers": { "black": 0.5, "white": 0.5 }
+  "cosmos": {
+    "variable_distribution": {
+      "variables": {
+        "top_outer_color": { "black": 0.34, "blue": 0.33, "red": 0.33 },
+        "top_outer_type": { "hoodie": 0.5, "vest": 0.5 },
+        "bottom_type": { "jeans": 1.0 },
+        "bottom_color": { "blue": 1.0 },
+        "shoe_type": { "boots": 0.5, "sneakers": 0.5 }
+      },
+      "conditional_variables": {
+        "shoe_color": {
+          "depends_on": "shoe_type",
+          "distributions": {
+            "boots": { "black": 0.6, "brown": 0.4 },
+            "sneakers": { "black": 0.5, "white": 0.5 }
+          }
         }
       }
     }
@@ -237,24 +307,22 @@ than merging with it. Therefore, it must define all six clothing attributes:
 Validation rules:
 
 - Every distribution must have a positive total weight.
-- `variables` and `conditional_variables` together must define all six clothing
-  attributes listed above.
-- `conditional_variables.<name>.depends_on` must reference a key in `variables`.
+- `variables` must contain at least one entry.
+- `conditional_variables.<name>.depends_on` must reference a directly sampled
+  parent available from `variables`.
 - Conditional distributions must cover every possible parent value.
 
 ## `event_and_person_attribute_search` Fields
 
 - `mode` (**string, optional**, default: `image_pas`): Pipeline mode passed to
   the attribute search service.
-- `llm_service_url` (**string, conditionally required**): Required when
-  `external_services=true`.
-- `vlm_service_url` (**string, optional**): Set this alongside
-  `llm_service_url` when running against external endpoints.
+- `vlm_service_url`, `llm_service_url` (**string, conditionally required**):
+  Both are required when `external_services=true`.
 - `vlm_model`, `llm_model` (**string, optional**): Model IDs sent to
   endpoints. Use values compatible with your deployed containers/endpoints.
 - Default values used when omitted:
-  - `vlm_model`: `Qwen/Qwen3-VL-30B-A3B-Instruct-FP8`
-  - `llm_model`: `Qwen/Qwen2.5-14B-Instruct`
+  - `vlm_model`: `Qwen/Qwen3.8-27B-FP8`
+  - `llm_model`: `Qwen/Qwen3.8-27B-FP8`
 - Specify these fields when your endpoint/container expects model IDs that are
   different from the defaults, or when you want to override models per run.
 
@@ -270,14 +338,14 @@ Reporting is off by default. Turn it on with one top-level flag:
 
 Set it to `false`, or leave it out, to turn reporting off.
 
-### What it produces
+### What It Produces
 
-After the workflow finishes, two files are written to
+After output validation, two files are written to
 `<output_directory>/<run_id>/reports/`:
 
-- `paidf_orchestration_stats.yaml` — run metadata, per-task timings, workload
+- `cdf_orchestration_stats.yaml`: run metadata, per-task timings, workload
   counts (inputs, successful augmentations, final dataset) and throughput rates.
-- `paidf_orchestration_stats.html` — a self-contained dashboard of the same
+- `cdf_orchestration_stats.html`: a self-contained dashboard of the same
   data. Everything is embedded, so it opens straight from storage with no
   network access.
 
@@ -293,10 +361,11 @@ fails with an `AirflowApiError`.
 Reporting observes the run instead of taking part in it. It hangs off
 `validated_output` as its own terminal branch and is never upstream of
 `pipeline_success`, so a failing report cannot fail an otherwise successful run
-or delay its completion. When the flag is off, the branch short-circuits to
-`performance_reporting.skip_report` and nothing is written.
+or delay `pipeline_success`. The DagRun remains active until the terminal report
+branch finishes. When the flag is off, the branch short-circuits to
+`performance_reporting.skip_report` and writes nothing.
 
-## Full Example: External Services + Variety
+## Full Example with External Services and Variety
 
 ```json
 {
@@ -342,5 +411,5 @@ or delay its completion. When the flag is off, the branch short-circuits to
 1. Open the Airflow UI.
 2. Enable `image_attribute_augmentation_dag_k8s`.
 3. Choose **Trigger DAG w/ config**.
-4. Paste your payload JSON.
+4. Under **Run Parameters**, replace `payload` with your payload JSON.
 5. Start the run.

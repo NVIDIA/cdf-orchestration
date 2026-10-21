@@ -1,21 +1,35 @@
 [project]
-name = "paidf-orchestration"
+name = "cdf-orchestration"
 version = "1.1.0"
 requires-python = ">=3.11,<3.12"
 dependencies = []
 
 [dependency-groups]
-# Extra runtime packages not already in apache/airflow:3.1.7-python3.11.
 airflow-runtime = [
+  "apache-airflow-providers-fab==3.9.0",
+  "ngcsdk==4.10.0",
   "multi-storage-client==0.41.0",
-  "pillow==12.3.0",
-  "bracex==3.0",
-  "lark==1.3.1",
-  "prettytable==3.18.0",
-  "wcmatch==10.2",
-  "xattr==1.3.0",
+  "pillow>=12.2.0",
 ]
 
 [tool.uv]
+managed = true
 package = false
 default-groups = ["airflow-runtime"]
+
+[tool.uv.workspace]
+members = ["airflow"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "F",        # Pyflakes rules
+    "I",        # Sort imports properly
+    "AIR",      # All Airflow rules (deprecated 2.x imports, scheduling, naming, etc.)
+]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-third-party = ["airflow"]

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared model-cache PVC mount helpers for K8s operators."""
+"""Shared PVC mount helpers for K8s operators (model cache and I/O cache)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from kubernetes import client
 
 MODEL_MOUNT_PATH = "/config/models"
 MODEL_VOLUME_NAME = "model-cache"
+IO_MOUNT_PATH = "/mnt/ngc-io-cache"
+IO_VOLUME_NAME = "io-cache"
 DSHM_VOLUME_NAME = "dshm"
 DSHM_SIZE_LIMIT = "2Gi"
 DSHM_MOUNT_PATH = "/dev/shm"
@@ -60,10 +62,37 @@ def build_model_mounts(
     return [build_model_volume(model_cache_pvc)], [build_model_volume_mount()]
 
 
+def build_io_volume(pvc_name: str) -> client.V1Volume:
+    return client.V1Volume(
+        name=IO_VOLUME_NAME,
+        persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
+            claim_name=pvc_name,
+        ),
+    )
+
+
+def build_io_volume_mount() -> client.V1VolumeMount:
+    return client.V1VolumeMount(
+        name=IO_VOLUME_NAME,
+        mount_path=IO_MOUNT_PATH,
+    )
+
+
+def build_io_mounts(
+    io_cache_pvc: Optional[str],
+) -> Tuple[list[client.V1Volume], list[client.V1VolumeMount]]:
+    """Build PVC volume and mount at ``/mnt/ngc-io-cache`` when a claim name is provided."""
+    if not io_cache_pvc:
+        return [], []
+
+    return [build_io_volume(io_cache_pvc)], [build_io_volume_mount()]
+
+
 def build_inference_pod_volumes(
     *,
     gpu: bool = False,
     model_cache_pvc: Optional[str] = None,
+    io_cache_pvc: Optional[str] = None,
     shm_size: Optional[str] = None,
 ) -> Tuple[list[client.V1Volume], list[client.V1VolumeMount]]:
     """Build pod volumes/mounts for GPU inference services.
@@ -84,5 +113,10 @@ def build_inference_pod_volumes(
         model_volumes, model_mounts = build_model_mounts(model_cache_pvc)
         volumes.extend(model_volumes)
         mounts.extend(model_mounts)
+
+    if io_cache_pvc:
+        io_volumes, io_mounts = build_io_mounts(io_cache_pvc)
+        volumes.extend(io_volumes)
+        mounts.extend(io_mounts)
 
     return volumes, mounts
