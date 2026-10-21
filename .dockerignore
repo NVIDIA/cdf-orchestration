@@ -69,9 +69,6 @@ terraform/*.tfstate
 terraform/*.tfstate.backup
 terraform/.terraform.lock.hcl
 
-# UV lock files (already in image via explicit COPY)
-uv.lock
-
 # Makefiles and CI/CD
 Makefile
 .gitlab-ci.yml

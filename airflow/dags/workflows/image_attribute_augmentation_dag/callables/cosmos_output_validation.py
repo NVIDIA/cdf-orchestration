@@ -18,6 +18,7 @@ from dags.shared.task_groups.input_preparation import require_prepared_input_fro
 from dags.shared.utils.msc_utils import is_file, write_file_to_directory
 
 COSMOS_SKIPPED_JSON = "cosmos_skipped.json"
+ATTRIBUTE_VERIFICATION_CHECKER = "metropolis.attribute_verification"
 
 
 def _read_output_metadata(output_video: str) -> dict[str, Any] | None:
@@ -40,9 +41,24 @@ def _read_output_metadata(output_video: str) -> dict[str, Any] | None:
 
 
 def _attribute_verification_passed(output_metadata: dict[str, Any] | None) -> bool:
-    """Return False when verification explicitly failed or its metadata is unreadable."""
+    """Return whether legacy or Cosmos Evaluator attribute verification passed."""
     if output_metadata is None:
         return False
+    evaluator = output_metadata.get("cosmos_evaluator")
+    if evaluator is not None:
+        if not isinstance(evaluator, dict):
+            return False
+        if evaluator.get("operational_success") is not True:
+            return False
+        if evaluator.get("quality_passed") is not True:
+            return False
+        stream_key = evaluator.get("stream_key")
+        checks = evaluator.get("checks")
+        checker_result = (
+            checks.get(ATTRIBUTE_VERIFICATION_CHECKER) if isinstance(checks, dict) else None
+        )
+        stream_result = checker_result.get(stream_key) if isinstance(checker_result, dict) else None
+        return isinstance(stream_result, dict) and stream_result.get("passed") is True
     attr_check = output_metadata.get("attribute_verification")
     if not isinstance(attr_check, dict):
         return True
@@ -106,7 +122,7 @@ def validate_image_attribute_augmentation_image_edit_outputs(
                 output_metadata = _read_output_metadata(output_video)
                 if not _attribute_verification_passed(output_metadata):
                     logging.warning(
-                        "Skipping augmentation output that failed VLM attribute verification "
+                        "Skipping augmentation output that failed Cosmos attribute verification "
                         "for %s (augmentation %d): %s",
                         prepared_video.video_key,
                         aug_idx,
@@ -117,7 +133,7 @@ def validate_image_attribute_augmentation_image_edit_outputs(
                             "person_key": prepared_video.video_key,
                             "aug_idx": aug_idx,
                             "output_path": output_video,
-                            "reason": "vlm_verification_failed",
+                            "reason": "attribute_verification_failed",
                         }
                     )
                     continue

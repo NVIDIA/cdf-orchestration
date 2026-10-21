@@ -18,6 +18,8 @@
   --purple: #7656b5;
   --teal: #0e9f83;
   --slate: #64748b;
+  --rose: #c2557a;
+  --steel: #5b7f9e;
   --shadow: 0 12px 36px rgba(24, 48, 31, 0.08);
 }
 
@@ -286,10 +288,12 @@ h1 {
   background: var(--green);
 }
 
+.simulation,
 .processing {
   background: var(--blue);
 }
 
+.anomalygen,
 .inference {
   background: var(--purple);
 }
@@ -304,6 +308,14 @@ h1 {
 
 .orchestration {
   background: var(--slate);
+}
+
+.cds {
+  background: var(--rose);
+}
+
+.services {
+  background: var(--steel);
 }
 
 /* Queue time vs runtime, and operational signals */

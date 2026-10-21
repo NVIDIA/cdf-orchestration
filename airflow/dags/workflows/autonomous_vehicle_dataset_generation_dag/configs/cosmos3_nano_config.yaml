@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+endpoints:
+  - id: cosmos3-nano
+    role: video_transfer
+    adapter: openai.video.async
+    model: nvidia/Cosmos3-Nano
+  - id: cosmos_evaluator
+    role: evaluator
+    adapter: cosmos.evaluator.arbitrator
+    timeout: 7200
+
+pipeline:
+  retry: 0
+  regenerate_caption_on_retry: false
+
+augmentation:
+  model:
+    name: cosmos3-nano
+    version: nano-transfer
+  parameters:
+    flow_shift: 10.0
+    seed: null
+    extra_params:
+      wsm:
+        control_weight: 1.0
+      resolution: "720"
+      control_guidance: 1.2
+      guardrails: false
+      use_resolution_template: false
+      use_duration_template: false
+      num_conditional_frames: 1
+      # Leave appearance editable in the first chunk; retain continuity between chunks.
+      num_first_chunk_conditional_frames: 0
+      share_vision_temporal_positions: true
+
+evaluators:
+  - cosmos_evaluator:
+      enabled: true
+      endpoint_id: cosmos_evaluator
+      stream_key: output
+      poll_interval_seconds: 5
+      config:
+        plausibility_threshold: 0.5
+      output_storage_prefix: "${data.0.output.prefix}/cosmos-evaluator/"
+      inputs:
+        original_video_urls:
+          output: "${data.0.inputs.rgb}"
+      checks:
+        - name: metropolis.physical_plausibility
+          gate: false # Filter outputs vs throwing an error.
+          metadata_key: physical_plausibility

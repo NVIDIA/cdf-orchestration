@@ -48,7 +48,7 @@ class EndpointXComValue(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    url: str = Field(..., description="Full invocation URL (e.g. https://.../v1)")
+    url: str = Field(..., description="Service URL, optionally including a client API path")
     resource_id: Optional[str] = Field(None, description="Platform resource id (e.g. function_id)")
     resource_version: Optional[str] = Field(
         None, description="Platform resource version (e.g. function_version_id)"

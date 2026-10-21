@@ -108,7 +108,10 @@
 
   const finalCount = workload[display.final_count_key] || 0;
   const successful = workload[display.successful_count_key] || 0;
-  const stageSeconds = throughput.augmentation_stage_wall_seconds;
+  // Workflows whose headline stage is not augmentation name their own key, so
+  // the card's duration matches its label.
+  const stageSeconds =
+    throughput[display.stage_seconds_key || "augmentation_stage_wall_seconds"];
   const endToEndRate = (throughput[display.end_to_end_rate_key] || {}).items_per_minute;
   const augmentationRate = (throughput[display.augmentation_rate_key] || {}).items_per_minute;
   const queueValues = tasks
@@ -146,6 +149,24 @@
     );
   }
 
+  const throughputCards = display.throughput_cards
+    ? display.throughput_cards.map(function (metric) {
+        const count = workload[metric.count_key];
+        const seconds = throughput[metric.seconds_key];
+        const value = (throughput[metric.rate_key] || {}).items_per_minute;
+        return card(
+          metric.label,
+          itemRate(value),
+          count == null || seconds == null
+            ? "Output count or timing unavailable"
+            : countLabel(count) + " / " + duration(seconds),
+        );
+      })
+    : [
+        card("End-to-end throughput", itemRate(endToEndRate), observed),
+        card(display.stage_label + " throughput", itemRate(augmentationRate), stageObserved),
+      ];
+
   setHtml(
     "cards",
     [
@@ -158,14 +179,15 @@
           workload[display.per_input_count_key] +
           " " + display.per_input_label,
       ),
-      card("End-to-end throughput", itemRate(endToEndRate), observed),
-      card(display.stage_label + " throughput", itemRate(augmentationRate), stageObserved),
+      ...throughputCards,
       card(display.stage_label + " stage", duration(stageSeconds), stageShare + "% of measured window"),
       card("Longest queue", duration(maxQueue), "Average " + duration(average(queueValues))),
     ].join(""),
   );
 
-  if (finalCount === 0) {
+  if (display.throughput_description) {
+    setText("sample-text", display.throughput_description);
+  } else if (finalCount === 0) {
     setText("sample-text", "No final " + display.unit_plural + " were produced, so throughput is unavailable.");
   } else if (finalCount === 1) {
     setText(
@@ -298,6 +320,10 @@
   const successCount = tasks.filter(function (task) {
     return task.state === "success";
   }).length;
+  const augmentationExpected =
+    workload[display.augmentation_expected_count_key || "expected_augmentations"];
+  const augmentationSuccessful =
+    workload[display.augmentation_successful_count_key || display.successful_count_key];
 
   setHtml(
     "insights",
@@ -309,10 +335,15 @@
             "Longest task at " + duration(slowest.task_duration_seconds),
           )
         : "",
-      insight(
-        successful + " / " + workload.expected_augmentations,
-        "Successful / expected augmented " + display.unit_plural,
-      ),
+      // Workflows whose headline counts are not augmentations name their own
+      // keys. Skipped entirely when nothing was augmented, which otherwise
+      // rendered "N / undefined".
+      augmentationExpected == null
+        ? ""
+        : insight(
+            augmentationSuccessful + " / " + augmentationExpected,
+            "Successful / expected augmented " + display.unit_plural,
+          ),
       insight(successCount + " / " + tasks.length, "Tasks successful at report collection"),
     ].join(""),
   );

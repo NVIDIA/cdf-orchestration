@@ -13,10 +13,14 @@ from pathlib import Path
 from airflow.exceptions import AirflowConfigException, AirflowFailException
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import PythonOperator
-from airflow.sdk import DAG, Param, chain
+from airflow.sdk import DAG, chain
 from airflow.task.trigger_rule import TriggerRule
 
 from dags.shared.task_groups.cosmos import CosmosTaskGroup
+from dags.shared.task_groups.cosmos_evaluator import (
+    ATTRIBUTE_VERIFICATION_CHECKER,
+    CosmosEvaluatorTaskGroup,
+)
 from dags.shared.task_groups.image_attribute_augmentation import (
     ImageAttributeAugmentationTaskGroup,
 )
@@ -30,6 +34,7 @@ from dags.shared.task_groups.validate_payload import ValidatePayloadTaskGroup
 from dags.shared.task_groups.validated_output import ValidatedOutputTaskGroup
 from dags.shared.utils.component_builder import ComponentBuilder
 from dags.shared.utils.dag_utils import (
+    model_payload_param,
     on_failure_callback,
     on_success_callback,
     resolve_dag_timeout,
@@ -63,9 +68,11 @@ IMAGE_ATTRIBUTE_AUGMENTATION_ATTRIBUTE_SEARCH_QUERY_PROMPT_PATH = (
     IMAGE_ATTRIBUTE_AUGMENTATION_CONFIG_DIR
     / "image_attribute_augmentation_synonymous_query_prompt.json"
 )
+IMAGE_ATTRIBUTE_AUGMENTATION_COSMOS_EVALUATOR_CONFIG_PATH = (
+    IMAGE_ATTRIBUTE_AUGMENTATION_CONFIG_DIR / "cosmos_evaluator_config.yaml"
+)
 IMAGE_ATTRIBUTE_AUGMENTATION_SERVICE_SPECS = (
     ServiceLifecycleSpec("vlm_service", "wait_for_vlm"),
-    ServiceLifecycleSpec("llm_service", "wait_for_llm"),
     ServiceLifecycleSpec("image_edit_service", "wait_for_image_edit"),
 )
 
@@ -84,10 +91,16 @@ VALIDATED_OUTPUT_TASK_ID = "validated_output.validate_outputs"
 class ImageAttributeAugmentationDAGBuilder:
     """Builder class for platform-specific Image Attribute Augmentation DAGs."""
 
-    def __init__(self, manifest_path: str | Path, logging_level: str = "INFO"):
+    def __init__(
+        self,
+        manifest_path: str | Path,
+        logging_level: str = "INFO",
+        use_external_cosmos_evaluator: bool = False,
+    ):
         logging_level = os.environ.get("LOGGING_LEVEL", logging_level)
         logger.setLevel(getattr(logging, logging_level.upper(), logging.INFO))
         self.manifest_path = str(manifest_path)
+        self.use_external_cosmos_evaluator = use_external_cosmos_evaluator
 
         try:
             self.builder = ComponentBuilder(manifest_path=self.manifest_path)
@@ -129,10 +142,9 @@ class ImageAttributeAugmentationDAGBuilder:
             catchup=False,
             tags=tags or ["sdg", "image_attribute_augmentation", "preprocessing"],
             params={
-                "payload": Param(
-                    default=ImageAttributeAugmentationDagPayloadConfig().model_dump(),
-                    schema=ImageAttributeAugmentationDagPayloadConfig.model_json_schema(),
-                    type="object",
+                "payload": model_payload_param(
+                    ImageAttributeAugmentationDagPayloadConfig,
+                    ImageAttributeAugmentationDagPayloadConfig().model_dump(),
                 ),
             },
             on_success_callback=on_success_callback,
@@ -151,27 +163,59 @@ class ImageAttributeAugmentationDAGBuilder:
                 builder=self.builder,
                 service_lifecycle_config="{{ (ti.xcom_pull(task_ids='validate_payload', key='return_value') or {}).get('service_lifecycle', {}) | tojson }}",
                 service_specs=IMAGE_ATTRIBUTE_AUGMENTATION_SERVICE_SPECS,
+                shutdown_group_id=None,
             )
             wait_tasks = service_lifecycle.get_wait_for_services_tasks()
             wait_for_vlm = wait_tasks["vlm_service"]
-            wait_for_llm = wait_tasks["llm_service"]
             wait_for_image_edit = wait_tasks["image_edit_service"]
             startup_tasks = service_lifecycle.get_service_startup_task_group()
-            shutdown_tasks = service_lifecycle.get_service_shutdown_task_group()
+            service_lifecycle.get_service_shutdown_task_group()
+            shutdown_roots = list(service_lifecycle.shutdown_tasks.values()) or [
+                service_lifecycle.shutdown_join_task
+            ]
             shutdown_image_edit_id = service_lifecycle.shutdown_xcom_task_id("image_edit_service")
             late_shutdown_tasks = [
                 dag.get_task(service_lifecycle.shutdown_xcom_task_id(component_key))
-                for component_key in ("vlm_service", "llm_service")
+                for component_key in ("vlm_service",)
                 if dag.has_task(service_lifecycle.shutdown_xcom_task_id(component_key))
             ]
             services_ready = EmptyOperator(task_id="services_ready")
+
+            wait_for_cosmos_evaluator = None
+            cosmos_evaluator_shutdown = None
+            cosmos_evaluator_failure_tasks = []
+            if CosmosEvaluatorTaskGroup.is_supported(
+                self.builder,
+                checker_names=(ATTRIBUTE_VERIFICATION_CHECKER,),
+            ):
+                cosmos_evaluator_task_group = CosmosEvaluatorTaskGroup(
+                    builder=self.builder,
+                    default_config_path=IMAGE_ATTRIBUTE_AUGMENTATION_COSMOS_EVALUATOR_CONFIG_PATH,
+                    checker_names=(ATTRIBUTE_VERIFICATION_CHECKER,),
+                )
+                wait_for_cosmos_evaluator = cosmos_evaluator_task_group.get_startup_task_group()
+                cosmos_evaluator_failure_tasks = [
+                    task
+                    for task in wait_for_cosmos_evaluator.children.values()
+                    if not isinstance(task, EmptyOperator)
+                ]
+                cosmos_evaluator_shutdown = cosmos_evaluator_task_group.get_shutdown_task_group()
 
             cosmos_augmentation = CosmosTaskGroup(
                 builder=self.builder,
                 config_generation_callable=generate_image_attribute_augmentation_image_edit_configs,
                 output_validation_callable=validate_image_attribute_augmentation_image_edit_outputs,
                 task_config="{{ (ti.xcom_pull(task_ids='validate_payload', key='return_value') or {}).get('cosmos', {}) }}",
-                internal_augmentation_pool="iaa_internal_image_edit_service_pool",
+                config_generation_op_kwargs={
+                    "default_config_path": str(
+                        IMAGE_ATTRIBUTE_AUGMENTATION_COSMOS_EVALUATOR_CONFIG_PATH
+                        if (
+                            wait_for_cosmos_evaluator is not None
+                            or self.use_external_cosmos_evaluator
+                        )
+                        else IMAGE_ATTRIBUTE_AUGMENTATION_CONFIG_DIR / "cosmos_config.yaml"
+                    )
+                },
             ).get_cosmos_augmentation_task_group()
 
             cosmos_post_processing = None
@@ -239,12 +283,17 @@ class ImageAttributeAugmentationDAGBuilder:
             validate_payload >> input_preparation
             input_preparation >> startup_tasks
 
-            validate_payload >> [wait_for_vlm, wait_for_llm, wait_for_image_edit]
-            for task in [input_preparation, wait_for_vlm, wait_for_llm, wait_for_image_edit]:
+            validate_payload >> [wait_for_vlm, wait_for_image_edit]
+            if wait_for_cosmos_evaluator is not None:
+                input_preparation >> wait_for_cosmos_evaluator
+            for task in [input_preparation, wait_for_vlm, wait_for_image_edit]:
                 task >> services_ready
+            if wait_for_cosmos_evaluator is not None:
+                wait_for_cosmos_evaluator >> services_ready
             services_ready >> cosmos_augmentation
-            # Image-edit is only used by Cosmos; tear it down so VLM/LLM keep the GPUs
-            # for post-processing and attribute search. OSMO has no cleanup operators.
+            # Image-edit is only used by Cosmos; tear it down so the shared VLM/LLM
+            # service keeps its GPU
+            # for post-processing and attribute search.
             if dag.has_task(shutdown_image_edit_id):
                 cosmos_augmentation >> dag.get_task(shutdown_image_edit_id)
             if cosmos_post_processing is not None:
@@ -268,14 +317,22 @@ class ImageAttributeAugmentationDAGBuilder:
             # of the outcome tasks: a broken report must not fail an otherwise good run,
             # nor delay pipeline_success. Keeping fail_pipeline and pipeline_success as
             # leaves also keeps them, not reporting, in charge of the DAG run's state.
-            # VLM/LLM cleanup is chained by task so image-edit is not pulled back to
-            # the end of the run (ALL_DONE on a TaskGroup root would wait for both).
+            # Chain VLM cleanup directly so image-edit is not pulled back to
+            # the end of the run.
             validated_output >> performance_reporting
             validated_output >> [fail_pipeline, pipeline_success]
+            for task in cosmos_evaluator_failure_tasks:
+                task >> fail_pipeline
+            if cosmos_evaluator_shutdown is not None:
+                cosmos_augmentation >> cosmos_evaluator_shutdown
+                validated_output >> cosmos_evaluator_shutdown
+                fail_pipeline >> cosmos_evaluator_shutdown
+                # The failure gate can finish before a delayed evaluator deploy.
+                list(wait_for_cosmos_evaluator.children.values()) >> cosmos_evaluator_shutdown
             if late_shutdown_tasks:
                 validated_output >> late_shutdown_tasks
             else:
-                validated_output >> shutdown_tasks
+                validated_output >> shutdown_roots
 
         return dag
 
@@ -296,7 +353,10 @@ def _create_image_attribute_augmentation_dag_if_manifest_exists(
         return None
 
     try:
-        return ImageAttributeAugmentationDAGBuilder(manifest_path=manifest_path).build_dag(
+        return ImageAttributeAugmentationDAGBuilder(
+            manifest_path=manifest_path,
+            use_external_cosmos_evaluator=platform == "osmo",
+        ).build_dag(
             dag_id=f"image_attribute_augmentation_dag_{platform}",
             description=description,
             tags=tags,
@@ -324,4 +384,15 @@ image_attribute_augmentation_dag_k8s = _create_image_attribute_augmentation_dag_
     platform="k8s",
     description="Run the Image Attribute Augmentation preprocessing workflow on Native Kubernetes",
     tags=["sdg", "kubernetes", "image_attribute_augmentation", "preprocessing"],
+)
+
+_IMAGE_ATTRIBUTE_AUGMENTATION_OSMO_MANIFEST = os.environ.get(
+    "IMAGE_ATTRIBUTE_AUGMENTATION_OSMO_MANIFEST_PATH",
+    IMAGE_ATTRIBUTE_AUGMENTATION_CONFIG_DIR / "image_attribute_augmentation_osmo_manifest.yaml",
+)
+image_attribute_augmentation_dag_osmo = _create_image_attribute_augmentation_dag_if_manifest_exists(
+    manifest_path=_IMAGE_ATTRIBUTE_AUGMENTATION_OSMO_MANIFEST,
+    platform="osmo",
+    description="Run the Image Attribute Augmentation preprocessing workflow on OSMO",
+    tags=["sdg", "osmo", "image_attribute_augmentation", "preprocessing"],
 )

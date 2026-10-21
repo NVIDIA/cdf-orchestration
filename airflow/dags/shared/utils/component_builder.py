@@ -24,14 +24,24 @@ from dags.shared.utils.logging import setup_logger
 # Operator class mapping for dynamic imports
 # Supports both canonical names and short aliases
 _OPERATOR_CLASS_MAP: Dict[str, str] = {
+    # NVCF operators
+    "NVCFOperator": "nvcf_plugin.operators.nvcf_operator.NVCFOperator",
+    "NVCFTaskOperator": "nvcf_plugin.operators.nvct_operator.NVCFTaskOperator",
+    "NVCFCleanupOperator": "nvcf_plugin.operators.nvcf_cleanup_operator.NVCFCleanupOperator",
     # Kubernetes operators
     "K8sServiceOperator": "k8s_plugin.operators.k8s_service_operator.K8sServiceOperator",
     "K8sTaskOperator": "k8s_plugin.operators.k8s_task_operator.K8sTaskOperator",
     "K8sCleanupOperator": "k8s_plugin.operators.k8s_cleanup_operator.K8sCleanupOperator",
+    # OSMO operators
+    "OsmoTaskOperator": "osmo_plugin.operators.osmo_task_operator.OsmoTaskOperator",
     # Short aliases
+    "nvcf": "nvcf_plugin.operators.nvcf_operator.NVCFOperator",
+    "nvct": "nvcf_plugin.operators.nvct_operator.NVCFTaskOperator",
+    "nvcf_cleanup": "nvcf_plugin.operators.nvcf_cleanup_operator.NVCFCleanupOperator",
     "k8s_service": "k8s_plugin.operators.k8s_service_operator.K8sServiceOperator",
     "k8s_task": "k8s_plugin.operators.k8s_task_operator.K8sTaskOperator",
     "k8s_cleanup": "k8s_plugin.operators.k8s_cleanup_operator.K8sCleanupOperator",
+    "osmo_task": "osmo_plugin.operators.osmo_task_operator.OsmoTaskOperator",
 }
 
 # Operator kwargs that carry environment entries. Operators declare these as
@@ -305,9 +315,17 @@ class ComponentBuilder:
 
         if component.model_cache_pvc:
             kwargs["model_cache_pvc"] = component.model_cache_pvc
+        if component.io_cache_pvc:
+            kwargs["io_cache_pvc"] = component.io_cache_pvc
 
-        # Handle container_image
-        kwargs["container_image"] = component.container_image
+        # Handle the deployment artifact. NVCF endpoints/tasks can use a container image,
+        # a Helm chart, or an attached model; K8s components continue to use container_image.
+        if component.container_image is not None:
+            kwargs["container_image"] = component.container_image
+        if component.helm_chart is not None:
+            kwargs["helm_chart"] = component.helm_chart
+        if component.helm_chart_service is not None:
+            kwargs["helm_chart_service"] = component.helm_chart_service
 
         # Handle container_args - use parameter if provided, otherwise use component definition
         if container_args is not None:

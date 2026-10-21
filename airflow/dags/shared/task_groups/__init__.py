@@ -5,6 +5,7 @@
 
 from dags.shared.task_groups.captioning import CaptioningTaskGroup
 from dags.shared.task_groups.cosmos import CosmosTaskGroup
+from dags.shared.task_groups.cosmos_evaluator import CosmosEvaluatorTaskGroup
 from dags.shared.task_groups.detection_and_tracking import DetectionAndTrackingTaskGroup
 from dags.shared.task_groups.image_attribute_augmentation import (
     ImageAttributeAugmentationTaskGroup,
@@ -22,6 +23,7 @@ from dags.shared.task_groups.visual_qa import VisualQATaskGroup
 __all__ = [
     "CaptioningTaskGroup",
     "CosmosTaskGroup",
+    "CosmosEvaluatorTaskGroup",
     "DetectionAndTrackingTaskGroup",
     "ImageAttributeAugmentationTaskGroup",
     "InputPreparationTaskGroup",

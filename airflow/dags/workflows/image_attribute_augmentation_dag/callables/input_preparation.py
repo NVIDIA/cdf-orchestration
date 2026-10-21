@@ -43,6 +43,7 @@ def prepare_image_attribute_augmentation_input(
             run_base=run_base,
             input_path=config.input_path,
             output_directory=remote_preprocessing_dir,
+            max_imgs=config.max_imgs,
         )
 
         combined_dir = run_base / "combined_imgs"

@@ -1,0 +1,41 @@
+data: []  # Filled with one input/output pair in each per-image augmentation config.
+endpoints:
+  - id: image_edit
+    role: image_edit
+    url: null
+    model: null  # Filled from the deployment manifest, unless the payload overrides it.
+    adapter: openai.chat.completions
+    api_key_env: BUILD_NVIDIA_API_KEY
+    timeout: 600  # Includes time queued behind other requests on the same replica.
+pipeline:
+  retry: 1
+  regenerate_caption_on_retry: false
+  logging:
+    enabled: true
+    level: INFO
+# Prompt and sampling settings released with nvidia/cdf-sim2real-smt-solderlight.
+captioning:
+  llm:
+    text: >-
+      Render this PCB component crop as a restrained raked solder-light AOI
+      inspection photograph. Keep the exact source geometry, crop, markings, and
+      component body shape. Apply bright orange-red and cobalt-blue specular
+      highlights only to existing solder pads, exposed leads, endcaps, pins, and
+      metallic contacts. Keep plastic or ceramic IC bodies and large matte
+      component centers dark, flat, and non-emissive; no fiery rings, halos, glow,
+      speckled noise, or texture blooms on component bodies. Do not add any new
+      letters, labels, logos, captions, watermarks, borders, or decorative
+      graphics.
+augmentation:
+  model:
+    name: image-edit
+  parameters:
+    extra_body:
+      num_inference_steps: 30
+      true_cfg_scale: 4.0
+      seed: 0
+      negative_prompt: >-
+        added text, readable words, captions, labels, logos, watermarks, brand
+        marks, overlaid typography, new silkscreen markings, borders, decorative
+        graphics, fiery rings, flame-like glow, halos, glowing component body,
+        speckled noise, texture bloom, hot spots on matte body

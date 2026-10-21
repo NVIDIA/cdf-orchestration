@@ -14,6 +14,17 @@ from typing import Any, Mapping
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 
+# Timeline swatch labels, in render order. Workflows whose stages differ override
+# `timeline_legend` so the legend names what their own categories mean.
+DEFAULT_TIMELINE_LEGEND = {
+    "augmentation": "Augmentation",
+    "processing": "Post-processing",
+    "inference": "Attribute search",
+    "wait": "Wait",
+    "validation": "Validation",
+    "orchestration": "Orchestration",
+}
+
 
 @lru_cache(maxsize=None)
 def _read_asset(filename: str) -> str:
@@ -29,6 +40,14 @@ def _embed_json(value: Any) -> str:
     )
 
 
+def _render_legend(display: Mapping[str, Any]) -> str:
+    legend = display.get("timeline_legend") or DEFAULT_TIMELINE_LEGEND
+    return "\n        ".join(
+        f'<span><i class="swatch {escape(str(category))}"></i>{escape(str(label))}</span>'
+        for category, label in legend.items()
+    )
+
+
 def render_polished_dashboard(
     report: dict[str, Any],
     display: Mapping[str, Any],
@@ -36,6 +55,7 @@ def render_polished_dashboard(
 ) -> str:
     """Render the shared, self-contained dashboard with workflow display metadata."""
     values = {
+        "__DASHBOARD_LEGEND__": _render_legend(display),
         "__DASHBOARD_TITLE__": escape(str(display["title"])),
         "__DASHBOARD_STYLE__": _read_asset("dashboard.css"),
         "__DASHBOARD_SCRIPT__": _read_asset("dashboard.js"),

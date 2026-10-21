@@ -13,9 +13,11 @@ from typing import Any
 from airflow.exceptions import AirflowFailException
 from yarl import URL
 
-from dags.shared.task_groups.input_preparation import require_prepared_input_from_xcom
 from dags.shared.utils.msc_utils import is_file
-from dags.workflows.event_video_generation_dag.models import EventVideoGenerationDagPayloadConfig
+from dags.workflows.event_video_generation_dag.models import (
+    EventVideoGenerationAugmentationOutputResult,
+    EventVideoGenerationDagPayloadConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,32 +55,37 @@ def _parse_payload(value: str | dict[str, Any] | None) -> EventVideoGenerationDa
 def validate_event_video_generation_pipeline_outputs(
     payload: str | dict[str, Any] | None = None,
     run_id: str = "",
+    input_xcom_task_id: str = "cosmos_augmentation.validate_outputs",
+    input_xcom_key: str = "return_value",
     **context: Any,
 ) -> dict[str, Any]:
-    """Require the cookbook handoffs and terminal deliverables for every augmentation."""
+    """Require terminal deliverables for every successful augmentation."""
     try:
         config = _parse_payload(payload)
-        prepared = require_prepared_input_from_xcom(context["ti"])
+        augmentations = EventVideoGenerationAugmentationOutputResult.model_validate(
+            context["ti"].xcom_pull(task_ids=input_xcom_task_id, key=input_xcom_key)
+        ).augmentations
         auto_labeling_root = str(URL(config.output_directory) / run_id / "auto_labeling")
         missing = []
         scenes = []
         trackless_scenes = []
-        for image in prepared.videos:
-            for augmentation_index in range(config.cosmos.num_augmentation):
-                scene = f"{auto_labeling_root}/{image.video_key}/{augmentation_index}"
-                scenes.append(scene)
-                for artifact in ALWAYS_REQUIRED_ANNOTATION_FILES:
+        for augmentation in augmentations:
+            scene = (
+                f"{auto_labeling_root}/{augmentation.input_key}/{augmentation.augmentation_index}"
+            )
+            scenes.append(scene)
+            for artifact in ALWAYS_REQUIRED_ANNOTATION_FILES:
+                path = f"{scene}/{artifact}"
+                if not is_file(path):
+                    missing.append(path)
+            tracks_path = f"{scene}/{TRACKS_SIDECAR}"
+            if is_file(tracks_path):
+                for artifact in TRACK_REQUIRED_ANNOTATION_FILES:
                     path = f"{scene}/{artifact}"
                     if not is_file(path):
                         missing.append(path)
-                tracks_path = f"{scene}/{TRACKS_SIDECAR}"
-                if is_file(tracks_path):
-                    for artifact in TRACK_REQUIRED_ANNOTATION_FILES:
-                        path = f"{scene}/{artifact}"
-                        if not is_file(path):
-                            missing.append(path)
-                else:
-                    trackless_scenes.append(scene)
+            else:
+                trackless_scenes.append(scene)
         if missing:
             preview = ", ".join(missing[:10])
             suffix = "" if len(missing) <= 10 else f" (+{len(missing) - 10} more)"

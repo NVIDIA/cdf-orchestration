@@ -1,6 +1,6 @@
 # K8s Manifest for Remote GPU Cluster
 #
-# This manifest targets a remote Kubernetes cluster with H100 or L40S GPU(s).
+# This manifest targets a remote Kubernetes cluster with RTX PRO 6000 GPU(s).
 # It uses kubernetes_conn_id to connect to the remote cluster instead of
 # the local in-cluster config.
 
@@ -10,14 +10,24 @@ deployment:
   dag_timeout: 172800 # 2 days
 
   profiles:
+    k8s_cpu_endpoint:
+      operator: K8sServiceOperator
+      cleanup_operator: K8sCleanupOperator
+      pool: default_pool
+      pool_slots: 1
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        image_pull_secrets:
+          - ngc-docker-registry-secret
+
     k8s_cpu_task:
       operator: K8sTaskOperator
       pool: default_pool
       pool_slots: 1
       configuration:
         namespace: sdg-workflow
-        kubernetes_conn_id: kubernetes_remote
-        in_cluster: false
+        in_cluster: true
         startup_timeout_seconds: 900
         image_pull_secrets:
           - ngc-docker-registry-secret
@@ -25,13 +35,12 @@ deployment:
     k8s_gpu_endpoint:
       operator: K8sServiceOperator
       cleanup_operator: K8sCleanupOperator
-      pool: k8s_gpu_1
+      pool: k8s_rtx6000_1
       pool_slots: 1
       configuration:
         namespace: sdg-workflow
-        kubernetes_conn_id: kubernetes_remote
-        in_cluster: false
-        gpu: H100/L40S
+        in_cluster: true
+        gpu: true
         model_cache_pvc: ngc-model-cache
         image_pull_secrets:
           - ngc-docker-registry-secret
@@ -43,13 +52,12 @@ deployment:
     k8s_gpu_endpoint_2:
       operator: K8sServiceOperator
       cleanup_operator: K8sCleanupOperator
-      pool: k8s_gpu_1
+      pool: k8s_rtx6000_1
       pool_slots: 2
       configuration:
         namespace: sdg-workflow
-        kubernetes_conn_id: kubernetes_remote
-        in_cluster: false
-        gpu: H100
+        in_cluster: true
+        gpu: true
         gpu_count: 2
         host_ipc: true
         model_cache_pvc: ngc-model-cache
@@ -62,14 +70,13 @@ deployment:
 
     k8s_gpu_task:
       operator: K8sTaskOperator
-      pool: k8s_gpu_1
+      pool: k8s_rtx6000_1
       pool_slots: 1
       configuration:
         namespace: sdg-workflow
-        kubernetes_conn_id: kubernetes_remote
-        in_cluster: false
+        in_cluster: true
         startup_timeout_seconds: 900
-        gpu: H100/L40S
+        gpu: true
         image_pull_secrets:
           - ngc-docker-registry-secret
 
@@ -79,57 +86,109 @@ deployment:
       pool_slots: 1
       configuration:
         namespace: sdg-workflow
-        kubernetes_conn_id: kubernetes_remote
-        in_cluster: false
+        in_cluster: true
         startup_timeout_seconds: 900
-        gpu: H100/L40S
+        gpu: true
         image_pull_secrets:
           - ngc-docker-registry-secret
 
   components:
     endpoints:
-      # Qwen3-VL-30B-A3B-Instruct-FP8 — shared VLM
-      vlm_service:
-        container_image: nvcr.io/nvidia/vllm:25.12-py3
-        deployment_profile: k8s_gpu_endpoint
+      cosmos_evaluator_postgres:
+        container_image: nvcr.io/nvidia/cosmos/database-postgres:2.0.0
+        deployment_profile: k8s_cpu_endpoint
         environment:
-          HF_HOME: "/config/models"
-        container_args: >-
-          python3 -m vllm.entrypoints.openai.api_server
-          --model Qwen/Qwen3-VL-30B-A3B-Instruct-FP8
-          --served-model-name Qwen/Qwen3-VL-30B-A3B-Instruct-FP8
-          --tensor-parallel-size 1
-          --max-model-len 64000
-          --trust-remote-code
-          --gpu-memory-utilization 0.6
-          --mm-encoder-tp-mode data
-          --limit-mm-per-prompt '{"image":1024,"video":1}'
-          --host 0.0.0.0 --port 8000
-        configuration:
-          inference_port: 8000
-          health_uri: /health
+          POSTGRES_USER: cosmos_eval
+          POSTGRES_DB: cosmos_evaluator
         secrets:
-          HF_TOKEN: "{{ var.value.hf_token }}"
+          POSTGRES_PASSWORD: local-postgres-password
+        configuration:
+          inference_port: 5432
+          health_protocol: TCP
 
-      # Qwen2.5-14B-Instruct — LLM
-      llm_service:
-        container_image: nvcr.io/nvidia/vllm:25.12-py3
+      cosmos_evaluator_database:
+        container_image: nvcr.io/nvidia/cosmos/database:2.0.0
+        deployment_profile: k8s_cpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+        secrets:
+          DATABASE_DB_CONFIG: >-
+            {{ {
+              "host": ti.xcom_pull(task_ids="wait_for_cosmos_evaluator.startup_cosmos_evaluator_postgres", key="resource_id") ~ ".sdg-workflow.svc.cluster.local",
+              "port": 5432,
+              "database": "cosmos_evaluator",
+              "user": "cosmos_eval",
+              "password": "local-postgres-password"
+            } | tojson }}
+          DATABASE_WORKER_KEYS: local-cosmos-evaluator-worker-key
+        configuration:
+          inference_port: 8000
+
+      cosmos_evaluator_attribute_verification:
+        container_image: nvcr.io/nvidia/cosmos/attribute-verification-checker:2.0.0
+        deployment_profile: k8s_gpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+          ATTRIBUTE_VERIFICATION_PROCESS_CONCURRENCY_LIMIT: "4"
+          ATTRIBUTE_VERIFICATION_INPUT_STORAGE_TYPE: local
+          ATTRIBUTE_VERIFICATION_OUTPUT_STORAGE_TYPE: local
+          ATTRIBUTE_VERIFICATION_DATABASE_API_URL: >-
+            {{ (ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.startup_cosmos_evaluator_database', key='endpoint') or {}).get('url', '') }}
+        secrets:
+          ATTRIBUTE_VERIFICATION_DATABASE_WORKER_KEY: local-cosmos-evaluator-worker-key
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          BUILD_NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          inference_port: 8000
+
+      cosmos_evaluator_physical_plausibility:
+        container_image: nvcr.io/nvidia/cosmos/physical-plausibility-checker:2.0.0
+        deployment_profile: k8s_gpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+          PHYSICAL_PLAUSIBILITY_PROCESS_CONCURRENCY_LIMIT: "4"
+          PHYSICAL_PLAUSIBILITY_MAX_BATCH_SIZE: "4"
+          PHYSICAL_PLAUSIBILITY_INPUT_STORAGE_TYPE: local
+          PHYSICAL_PLAUSIBILITY_OUTPUT_STORAGE_TYPE: local
+          PHYSICAL_PLAUSIBILITY_DATABASE_API_URL: >-
+            {{ (ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.startup_cosmos_evaluator_database', key='endpoint') or {}).get('url', '') }}
+        secrets:
+          PHYSICAL_PLAUSIBILITY_DATABASE_WORKER_KEY: local-cosmos-evaluator-worker-key
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          HF_TOKEN: "{{ var.value.hf_token }}"
+        configuration:
+          inference_port: 8000
+
+      cosmos_evaluator_arbitrator:
+        container_image: nvcr.io/nvidia/cosmos/arbitrator:2.0.0
+        deployment_profile: k8s_cpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+          ARBITRATOR_QUEUE_CAPACITY: "100"
+          COSMOS_EVALUATOR_DATABASE_API_URL: >-
+            {{ (ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.startup_cosmos_evaluator_database', key='endpoint') or {}).get('url', '') }}
+          COSMOS_EVALUATOR_CHECKER_ENDPOINTS: >-
+            {{ ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.build_checker_endpoint_map', key='return_value') }}
+        configuration:
+          inference_port: 8000
+
+      # Qwen3.8-27B-FP8 — shared VLM/LLM served from Hugging Face
+      vlm_service:
+        container_image: nvcr.io/nvidia/vllm:26.05.post1-py3
         deployment_profile: k8s_gpu_endpoint
         environment:
           HF_HOME: "/config/models"
         container_args: >-
-          python3 -m vllm.entrypoints.openai.api_server
-          --model Qwen/Qwen2.5-14B-Instruct
-          --served-model-name Qwen/Qwen2.5-14B-Instruct
-          --tensor-parallel-size 1
-          --max-model-len 32768
-          --trust-remote-code
-          --gpu-memory-utilization 0.6
+          vllm serve Qwen/Qwen3.8-27B-FP8
           --host 0.0.0.0 --port 8000
+          --trust-remote-code --max-model-len 32768 --dtype auto
+          --max-num-seqs 512
+          --default-chat-template-kwargs '{"enable_thinking": false}'
         configuration:
           inference_port: 8000
           health_uri: /health
         secrets:
+          HUGGING_FACE_HUB_TOKEN: "{{ var.value.hf_token }}"
           HF_TOKEN: "{{ var.value.hf_token }}"
 
       # nvidia/Cosmos3-Super-Image2Video — image2video
@@ -150,7 +209,7 @@ deployment:
           --use-hsdp
           --hsdp-shard-size 2
           --init-timeout 1800
-
+   
         configuration:
           inference_port: 8000
           health_uri: /health
@@ -160,7 +219,7 @@ deployment:
 
     tasks:
       detection_and_tracking:
-        container_image: nvcr.io/nvidia/paidf-detection-and-tracking-rfdetr-service:1.1.0
+        container_image: nvcr.io/nvidia/cdf-detection-and-tracking-rfdetr-service:1.1.0
         deployment_profile: k8s_gpu_task
         model_cache_pvc: ngc-model-cache
         environment:
@@ -173,7 +232,7 @@ deployment:
           startup_timeout_seconds: 14400
 
       captioning:
-        container_image: nvcr.io/nvidia/paidf-captioning-service:1.1.0
+        container_image: nvcr.io/nvidia/cdf-captioning-service:1.1.0
         deployment_profile: k8s_gpu_task
         secrets:
           MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
@@ -183,7 +242,7 @@ deployment:
           startup_timeout_seconds: 14400
 
       visual_qa:
-        container_image: nvcr.io/nvidia/paidf-visual-qa-service:1.1.0
+        container_image: nvcr.io/nvidia/cdf-visual-qa-service:1.1.0
         deployment_profile: k8s_gpu_task
         secrets:
           MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
@@ -193,7 +252,7 @@ deployment:
           startup_timeout_seconds: 14400
 
       event_and_person_attribute_search:
-        container_image: nvcr.io/nvidia/paidf-event-and-person-attribute-search-service:1.1.0
+        container_image: nvcr.io/nvidia/cdf-event-and-person-attribute-search-service:1.1.0
         deployment_profile: k8s_cpu_task
         secrets:
           MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
@@ -202,7 +261,8 @@ deployment:
           retries: 3
 
       augmentation:
-        container_image: nvcr.io/nvidia/paidf-augmentation:1.1.0
+        max_concurrency: 2
+        container_image: nvcr.io/nvidia/cdf-augmentation:1.2.0
         deployment_profile: augmentation_task
         environment:
           UV_LINK_MODE: copy
@@ -214,4 +274,4 @@ deployment:
           LLM_API_KEY: "{{ conn.nvcf_default.password }}"
           COSMOS_API_KEY: "{{ conn.nvcf_default.password }}"
         configuration:
-          retries: 3
+          retries: 3          

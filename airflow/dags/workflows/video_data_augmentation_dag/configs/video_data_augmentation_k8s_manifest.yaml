@@ -1,0 +1,319 @@
+# K8s Manifest for Remote GPU Cluster
+#
+# This manifest targets a remote Kubernetes cluster with RTX PRO 6000 GPU(s).
+# It uses kubernetes_conn_id to connect to the remote cluster instead of
+# the local in-cluster config.
+#
+# Kubernetes access uses the tbot-managed kubeconfig on kubernetes_conn_id.
+# Do not set a static `context`; tbot names the kubeconfig current-context.
+#
+# With external_services=false, shared VLM/LLM and Cosmos Transfer services are deployed
+# natively in-cluster. With external_services=true, those services are
+# expected to be pre-deployed externally (e.g., on NVCF).
+
+version: 0.0.1
+
+deployment:
+  dag_timeout: 172800 # 2 days
+
+  profiles:
+    # CPU-only Cosmos Evaluator services managed by the shared lifecycle.
+    k8s_cpu_endpoint:
+      operator: K8sServiceOperator
+      cleanup_operator: K8sCleanupOperator
+      pool: default_pool
+      pool_slots: 1
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        image_pull_secrets:
+          - ngc-docker-registry-secret
+
+    # K8s Service Operator for endpoints (RTX PRO 6000, remote cluster)
+    k8s_gpu_endpoint:
+      operator: K8sServiceOperator
+      cleanup_operator: K8sCleanupOperator
+      pool: k8s_rtx6000_1
+      pool_slots: 1
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        gpu: true
+        image_pull_secrets:
+          - ngc-docker-registry-secret
+        inference_port: 8000
+        health_uri: /health
+        deployment_ready_timeout_seconds: 5400
+        poll_interval_seconds: 10
+
+    # Two-GPU endpoint profile for Cosmos3-Nano with HSDP.
+    k8s_gpu_endpoint_2:
+      operator: K8sServiceOperator
+      cleanup_operator: K8sCleanupOperator
+      pool: k8s_rtx6000_1
+      pool_slots: 2
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        gpu: true
+        gpu_count: 2
+        host_ipc: true
+        shm_size: 32Gi
+        image_pull_secrets:
+          - ngc-docker-registry-secret
+        inference_port: 8001
+        health_uri: /health
+        deployment_ready_timeout_seconds: 5400
+        poll_interval_seconds: 10
+
+    # K8s Task Operator for batch tasks (RTX PRO 6000, remote cluster)
+    k8s_gpu_task:
+      operator: K8sTaskOperator
+      pool: k8s_rtx6000_1
+      pool_slots: 1
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        startup_timeout_seconds: 900
+        gpu: true
+        image_pull_secrets:
+          - ngc-docker-registry-secret
+
+  components:
+    endpoints:
+      cosmos_evaluator_postgres:
+        container_image: nvcr.io/nvidia/cosmos/database-postgres:2.0.0
+        deployment_profile: k8s_cpu_endpoint
+        environment:
+          POSTGRES_USER: cosmos_eval
+          POSTGRES_DB: cosmos_evaluator
+        secrets:
+          POSTGRES_PASSWORD: local-postgres-password
+        configuration:
+          inference_port: 5432
+          health_protocol: TCP
+
+      cosmos_evaluator_database:
+        container_image: nvcr.io/nvidia/cosmos/database:2.0.0
+        deployment_profile: k8s_cpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+        secrets:
+          DATABASE_DB_CONFIG: >-
+            {{ {
+              "host": ti.xcom_pull(task_ids="wait_for_cosmos_evaluator.startup_cosmos_evaluator_postgres", key="resource_id") ~ ".sdg-workflow.svc.cluster.local",
+              "port": 5432,
+              "database": "cosmos_evaluator",
+              "user": "cosmos_eval",
+              "password": "local-postgres-password"
+            } | tojson }}
+          DATABASE_WORKER_KEYS: local-cosmos-evaluator-worker-key
+        configuration:
+          inference_port: 8000
+
+      cosmos_evaluator_hallucination:
+        container_image: nvcr.io/nvidia/cosmos/hallucination-checker:2.0.0
+        deployment_profile: k8s_gpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+          HALLUCINATION_PROCESS_CONCURRENCY_LIMIT: "2"
+          HALLUCINATION_INPUT_STORAGE_TYPE: local
+          HALLUCINATION_OUTPUT_STORAGE_TYPE: local
+          HALLUCINATION_DATABASE_API_URL: >-
+            {{ (ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.startup_cosmos_evaluator_database', key='endpoint') or {}).get('url', '') }}
+        secrets:
+          HALLUCINATION_DATABASE_WORKER_KEY: local-cosmos-evaluator-worker-key
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+        configuration:
+          inference_port: 8000
+
+      cosmos_evaluator_attribute_verification:
+        container_image: nvcr.io/nvidia/cosmos/attribute-verification-checker:2.0.0
+        deployment_profile: k8s_gpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+          ATTRIBUTE_VERIFICATION_PROCESS_CONCURRENCY_LIMIT: "4"
+          ATTRIBUTE_VERIFICATION_INPUT_STORAGE_TYPE: local
+          ATTRIBUTE_VERIFICATION_OUTPUT_STORAGE_TYPE: local
+          ATTRIBUTE_VERIFICATION_DATABASE_API_URL: >-
+            {{ (ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.startup_cosmos_evaluator_database', key='endpoint') or {}).get('url', '') }}
+        secrets:
+          ATTRIBUTE_VERIFICATION_DATABASE_WORKER_KEY: local-cosmos-evaluator-worker-key
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          BUILD_NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          inference_port: 8000
+
+      cosmos_evaluator_physical_plausibility:
+        container_image: nvcr.io/nvidia/cosmos/physical-plausibility-checker:2.0.0
+        deployment_profile: k8s_gpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+          PHYSICAL_PLAUSIBILITY_PROCESS_CONCURRENCY_LIMIT: "4"
+          PHYSICAL_PLAUSIBILITY_MAX_BATCH_SIZE: "4"
+          PHYSICAL_PLAUSIBILITY_INPUT_STORAGE_TYPE: local
+          PHYSICAL_PLAUSIBILITY_OUTPUT_STORAGE_TYPE: local
+          PHYSICAL_PLAUSIBILITY_DATABASE_API_URL: >-
+            {{ (ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.startup_cosmos_evaluator_database', key='endpoint') or {}).get('url', '') }}
+        secrets:
+          PHYSICAL_PLAUSIBILITY_DATABASE_WORKER_KEY: local-cosmos-evaluator-worker-key
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          HF_TOKEN: "{{ var.value.hf_token }}"
+        configuration:
+          inference_port: 8000
+
+      cosmos_evaluator_arbitrator:
+        container_image: nvcr.io/nvidia/cosmos/arbitrator:2.0.0
+        deployment_profile: k8s_cpu_endpoint
+        environment:
+          COSMOS_EVALUATOR_ENV: local
+          ARBITRATOR_QUEUE_CAPACITY: "100"
+          COSMOS_EVALUATOR_DATABASE_API_URL: >-
+            {{ (ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.startup_cosmos_evaluator_database', key='endpoint') or {}).get('url', '') }}
+          COSMOS_EVALUATOR_CHECKER_ENDPOINTS: >-
+            {{ ti.xcom_pull(task_ids='wait_for_cosmos_evaluator.build_checker_endpoint_map', key='return_value') }}
+        configuration:
+          inference_port: 8000
+
+      # Qwen3.8-27B-FP8 — one endpoint shared by the VLM and LLM roles
+      vlm_service:
+        model_cache_pvc: ngc-model-cache
+        container_image: nvcr.io/nvidia/vllm:26.05.post1-py3
+        deployment_profile: k8s_gpu_endpoint
+        environment:
+          HF_HOME: "/config/models"
+        container_args: >-
+          vllm serve Qwen/Qwen3.8-27B-FP8
+          --host 0.0.0.0
+          --port 8000
+          --trust-remote-code
+          --max-model-len 32768
+          --dtype auto
+          --max-num-seqs 16
+          --default-chat-template-kwargs '{"enable_thinking": false}'
+        configuration:
+          inference_port: 8000
+          health_uri: /health
+          host_ipc: true
+        secrets:
+          HF_TOKEN: "{{ var.value.hf_token }}"
+
+      # Cosmos3-Nano transfer — synchronous video-to-video via vLLM-Omni
+      cosmos_transfer_service:
+        model_cache_pvc: ngc-model-cache
+        container_image: vllm/vllm-omni:v0.28.0
+        deployment_profile: k8s_gpu_endpoint_2
+        environment:
+          CUDA_DEVICE_ORDER: PCI_BUS_ID
+          HF_HOME: "/config/models/paidf-cosmos3"
+          NCCL_P2P_DISABLE: "1"
+          VLLM_OMNI_VIDEO_SYNC_TIMEOUT: "7200"
+          VLLM_OMNI_INPUT_WAIT_TIMEOUT_S: "7200"
+        container_args: >-
+          vllm serve nvidia/Cosmos3-Nano
+          --omni
+          --model-class-name Cosmos3OmniDiffusersPipeline
+          --no-guardrails
+          --allowed-local-media-path /
+          --cfg-parallel-size 1
+          --use-hsdp
+          --hsdp-shard-size 2
+          --host 0.0.0.0
+          --port 8001
+          --init-timeout 1800
+        configuration:
+          inference_port: 8001
+          health_uri: /health
+          deployment_ready_timeout_seconds: 5400
+          shm_size: 32Gi
+        secrets:
+          HF_TOKEN: "{{ var.value.hf_token }}"
+
+    tasks:
+      super_resolution:
+        container_image: nvcr.io/nvidia/cdf-super-resolution-service:1.1.0
+        deployment_profile: k8s_gpu_task
+        model_cache_pvc: ngc-model-cache
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          HF_TOKEN: "{{ var.value.hf_token }}"
+
+        environment:
+          HF_HOME: "/config/models/seedvr2"
+        configuration:
+          retries: 3
+          startup_timeout_seconds: 14400
+
+      detection_and_tracking:
+        container_image: nvcr.io/nvidia/cdf-detection-and-tracking-rfdetr-service:1.1.0
+        deployment_profile: k8s_gpu_task
+        model_cache_pvc: ngc-model-cache
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          HF_TOKEN: "{{ var.value.hf_token }}"
+        environment:
+          HF_HOME: "/config/models/detection"
+        configuration:
+          retries: 3
+          startup_timeout_seconds: 14400
+
+      captioning:
+        container_image: nvcr.io/nvidia/cdf-captioning-service:1.1.0
+        deployment_profile: k8s_gpu_task
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+          startup_timeout_seconds: 14400
+
+      visual_qa:
+        container_image: nvcr.io/nvidia/cdf-visual-qa-service:1.1.0
+        deployment_profile: k8s_gpu_task
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+          startup_timeout_seconds: 14400
+
+      reasoning:
+        container_image: nvcr.io/nvidia/cdf-reasoning-service:1.1.0
+        deployment_profile: k8s_gpu_task
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+          startup_timeout_seconds: 14400
+
+      training_export:
+        container_image: nvcr.io/nvidia/cdf-training-export-service:1.1.0
+        deployment_profile: k8s_gpu_task
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+          startup_timeout_seconds: 14400
+
+      augmentation:
+        max_concurrency: 1
+        container_image: nvcr.io/nvidia/cdf-augmentation:1.2.0
+        deployment_profile: k8s_gpu_task
+        environment:
+          UV_LINK_MODE: copy
+          HF_HOME: "/config/models"
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          BUILD_NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          VLM_API_KEY: "{{ conn.nvcf_default.password }}"
+          LLM_API_KEY: "{{ conn.nvcf_default.password }}"
+          COSMOS_API_KEY: "{{ conn.nvcf_default.password }}"
+          HF_TOKEN: "{{ var.value.hf_token }}"
+        configuration:
+          retries: 3
+          startup_timeout_seconds: 14400

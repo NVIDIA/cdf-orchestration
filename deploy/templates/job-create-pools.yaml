@@ -64,8 +64,8 @@ spec:
                 sleep 2
               done
               echo "Creating Airflow pools..."
-              {{- range .Values.airflowPools.pools }}
-              airflow pools set {{ .name | quote }} {{ .slots }} {{ .description | default "" | quote }}{{- if .includeDeferred }} --include-deferred{{ end }}
+              {{- range $name, $pool := .Values.airflowPools.pools }}
+              airflow pools set {{ $name | quote }} {{ $pool.slots }} {{ $pool.description | default "" | quote }}{{- if $pool.includeDeferred }} --include-deferred{{ end }}
               {{- end }}
               echo "Pools created successfully."
 {{- end }}

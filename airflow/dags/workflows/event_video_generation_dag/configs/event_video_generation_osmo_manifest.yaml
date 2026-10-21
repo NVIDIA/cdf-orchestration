@@ -1,0 +1,107 @@
+# OSMO Manifest for Event Video Generation
+#
+# GPU tasks run on OSMO. CPU-only person-attribute search stays on the remote
+# Kubernetes cluster. Internal VLM/image2video services are omitted; use
+# external endpoints in the payload. The shared Qwen3.8 VLM also serves LLM.
+
+version: 0.0.1
+
+deployment:
+  dag_timeout: 172800 # 2 days
+
+  profiles:
+    osmo_rtx6000:
+      pool: osmo_rtx6000_1
+      pool_slots: 1
+      operator: OsmoTaskOperator
+      configuration:
+        osmo_pool: metropolis-rtx6000-01
+        osmo_token: "{{ var.value.osmo_token }}"
+        osmo_gpu: 1
+        osmo_cpu: 11
+        osmo_memory: "100Gi"
+        osmo_storage: "100Gi"
+        poll_interval_seconds: 30
+
+    k8s_cpu_task:
+      operator: K8sTaskOperator
+      pool: default_pool
+      pool_slots: 1
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        startup_timeout_seconds: 900
+        image_pull_secrets:
+          - ngc-docker-registry-secret
+
+  components:
+    tasks:
+      detection_and_tracking:
+        container_image: nvcr.io/nvidia/cdf-detection-and-tracking-rfdetr-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        environment:
+          # OSMO has no ngc-model-cache PVC, so /config/models never exists and
+          # the service crashes creating its subdirectory (its mkdir is not
+          # recursive). Point the cache at /tmp so every run starts empty and
+          # downloads the weights itself. Keep this a directory that already
+          # exists rather than a /tmp subdirectory, for the same mkdir reason.
+          MODEL_CACHE_PATH: "/tmp"
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          # Kubernetes runs read the weights from the pre-populated PVC, so it
+          # needs no download credentials. Every OSMO run is a cache miss.
+          HF_TOKEN: "{{ var.value.hf_token }}"
+        configuration:
+          retries: 3
+          execution_timeout_seconds: 14400
+          container_command: main
+
+      captioning:
+        container_image: nvcr.io/nvidia/cdf-captioning-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+          execution_timeout_seconds: 14400
+          container_command: main
+
+      visual_qa:
+        container_image: nvcr.io/nvidia/cdf-visual-qa-service:1.1.0
+        deployment_profile: osmo_rtx6000
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+          execution_timeout_seconds: 14400
+          container_command: main
+
+      event_and_person_attribute_search:
+        container_image: nvcr.io/nvidia/cdf-event-and-person-attribute-search-service:1.1.0
+        deployment_profile: k8s_cpu_task
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+
+      augmentation:
+        max_concurrency: 2
+        container_image: nvcr.io/nvidia/cdf-augmentation:1.2.0
+        deployment_profile: osmo_rtx6000
+        environment:
+          UV_LINK_MODE: copy
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
+          BUILD_NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
+          VLM_API_KEY: "{{ conn.nvcf_default.password }}"
+          LLM_API_KEY: "{{ conn.nvcf_default.password }}"
+          COSMOS_API_KEY: "{{ conn.nvcf_default.password }}"
+        configuration:
+          retries: 3
+          execution_timeout_seconds: 14400
+          container_command: "bash -c 'exec uv run --no-sync /workspace/modules/cli.py \"$@\"' _"

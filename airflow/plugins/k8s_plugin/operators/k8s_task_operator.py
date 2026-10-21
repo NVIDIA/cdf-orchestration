@@ -6,6 +6,7 @@
 Wraps KubernetesPodOperator, translating manifest-format arguments (container_args,
 container_environment_variables, secrets) into KubernetesPodOperator parameters.
 When ``model_cache_pvc`` is set, the Helm-provisioned PVC is mounted at ``/config/models``.
+When ``io_cache_pvc`` is set, the I/O-cache PVC is mounted at ``/mnt/ngc-io-cache``.
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ from airflow.providers.cncf.kubernetes.utils.pod_manager import PodManager
 from kubernetes import client
 
 from k8s_plugin.connection import resolve_kubernetes_backend
-from k8s_plugin.model_cache import build_model_mounts
+from k8s_plugin.labels import k8s_plugin_resource_labels
+from k8s_plugin.model_cache import build_io_mounts, build_model_mounts
 
 _TOLERATION_FIELDS = ("key", "operator", "value", "effect", "tolerationSeconds")
 _VOLUME_MOUNT_FIELDS = {
@@ -69,6 +71,8 @@ class K8sTaskOperator(KubernetesPodOperator):
 
     When ``model_cache_pvc`` is set, mounts the claim at ``/config/models``.
     Model downloads are handled by the container (via ``HF_TOKEN``, ``HF_HOME``, etc.).
+    When ``io_cache_pvc`` is set, mounts the claim at ``/mnt/ngc-io-cache`` for
+    MSC POSIX reads and writes.
 
     Set ``volumes`` for extra pod volumes. Each entry is a Kubernetes volume
     spec plus ``mountPath``; those become container volumeMounts on the pod.
@@ -94,15 +98,18 @@ class K8sTaskOperator(KubernetesPodOperator):
         runtime_environment_variables: Optional[List[str]] = None,
         secrets: Optional[List[str]] = None,
         gpu: Optional[str] = None,
+        gpu_count: int = 1,
         node_selector: Optional[Mapping[str, Any]] = None,
         tolerations: Optional[List[Mapping[str, Any]]] = None,
         volumes: Optional[List[Mapping[str, Any]]] = None,
+        container_resources: Optional[Mapping[str, Any]] = None,
         namespace: str = "default",
         kubernetes_conn_id: Optional[str] = None,
         context: Optional[str] = None,
         in_cluster: Optional[bool] = None,
         image_pull_secrets: Optional[List[str]] = None,
         model_cache_pvc: Optional[str] = None,
+        io_cache_pvc: Optional[str] = None,
         startup_timeout_seconds: int = 900,
         # Absorbed silently -- NVCF-specific fields that may appear in manifest overrides
         instance_type: Optional[str] = None,
@@ -130,12 +137,15 @@ class K8sTaskOperator(KubernetesPodOperator):
         environment_by_name.update({item.name: item for item in _parse_env_list(secrets)})
         env_vars = list(environment_by_name.values())
 
-        container_resources = None
+        if type(gpu_count) is not int or gpu_count < 1:
+            raise ValueError("gpu_count must be a positive integer")
+        # Manifest-supplied cpu and memory are kept; the GPU request is merged
+        # into them rather than replacing them.
+        quantities = {kind: dict(values) for kind, values in (container_resources or {}).items()}
         if gpu:
-            container_resources = client.V1ResourceRequirements(
-                limits={"nvidia.com/gpu": "1"},
-                requests={"nvidia.com/gpu": "1"},
-            )
+            for kind in ("limits", "requests"):
+                quantities.setdefault(kind, {})["nvidia.com/gpu"] = str(gpu_count)
+        container_resources = client.V1ResourceRequirements(**quantities) if quantities else None
 
         pull_secrets = None
         if image_pull_secrets:
@@ -143,8 +153,9 @@ class K8sTaskOperator(KubernetesPodOperator):
 
         extra_volumes, extra_mounts = normalize_volumes(volumes)
         cache_volumes, cache_mounts = build_model_mounts(model_cache_pvc)
-        volumes = cache_volumes + extra_volumes
-        volume_mounts = cache_mounts + extra_mounts
+        io_volumes, io_mounts = build_io_mounts(io_cache_pvc)
+        volumes = cache_volumes + io_volumes + extra_volumes
+        volume_mounts = cache_mounts + io_mounts + extra_mounts
         node_selector = normalize_node_selector(node_selector)
         normalized_tolerations = normalize_tolerations(tolerations)
 
@@ -196,10 +207,19 @@ class K8sTaskOperator(KubernetesPodOperator):
         self.container_args = container_args
         self.container_image = container_image
         self.gpu = gpu
+        self.gpu_count = gpu_count
         self.model_cache_pvc = model_cache_pvc
+        self.io_cache_pvc = io_cache_pvc
         self.context = context
         self.node_selector = node_selector
         self.runtime_environment_variables = runtime_environment_variables
+
+    def execute(self, context: Dict[str, Any]) -> Any:
+        self.labels = {
+            **(self.labels or {}),
+            **k8s_plugin_resource_labels(context, task_id=self.task_id),
+        }
+        return super().execute(context)
 
 
 def normalize_node_selector(

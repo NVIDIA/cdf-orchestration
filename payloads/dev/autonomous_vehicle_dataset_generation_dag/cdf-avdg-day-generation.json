@@ -1,0 +1,22 @@
+{
+  "input_video_path": "msc://<input-profile>/av-input",
+  "output_directory": "msc://<output-profile>/av-output/day",
+  "collection_name": "replace-with-unique-av-day",
+  "search_mode": "embedding",
+  "query_video": "msc://<input-profile>/av-query/camera_front_wide_120fov.mp4",
+  "top_k": 1,
+  "limit": 1,
+  "collect_result_clips": true,
+  "cosmos": {
+    "enabled": true,
+    "prompt": "Transform this driving scene into clear daytime conditions with natural daylight, realistic shadows, and good visibility. Preserve camera motion, road layout, and vehicle trajectories.",
+    "num_clips": 1,
+    "num_augmentation": 1,
+    "num_frames": 93,
+    "fps": 24,
+    "camera": "camera_front_wide_120fov",
+    "size": "1280x720",
+    "num_inference_steps": 35,
+    "control_mode": "rgb"
+  }
+}

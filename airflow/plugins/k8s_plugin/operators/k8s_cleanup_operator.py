@@ -8,6 +8,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import Any, Dict, Optional
 
+from airflow.exceptions import AirflowException
 from airflow.providers.cncf.kubernetes.hooks.kubernetes import KubernetesHook
 from airflow.sdk import BaseOperator
 from kubernetes import client
@@ -107,5 +108,8 @@ class K8sCleanupOperator(BaseOperator):
 
         # Signal to any deferred startup operator waiting on this shutdown task.
         context["ti"].xcom_push(key="function_id", value=resource_name)
+
+        if not results["deployment_deleted"] or not results["service_deleted"]:
+            raise AirflowException(f"Incomplete Kubernetes cleanup for {resource_name}: {results}")
 
         return results

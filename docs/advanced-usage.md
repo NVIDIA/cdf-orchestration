@@ -6,53 +6,33 @@ This section provides instructions for advanced configuration and usage of the p
 
 This guide explains how the project code may be updated to add new DAGs or update the existing DAGs.
 
-### Push DAG or plugin changes (without full reinstall)
+To bake DAG or plugin edits into a new Airflow image and roll the Helm release, follow [Publish the Airflow image](getting-started.md#start-airflow-and-run-workflows) in the Getting Started guide (`make build sdg-controller`, then `make install sdg-controller`).
 
-> Note: This section assumes that the PAIDF Orchestration helm chart is running.
-> Follow instructions from the [Getting Started Guide](getting-started.md) to install the PAIDF Orchestration helm chart.
-
-After editing files under `airflow/dags` or `airflow/plugins`, or after changing the locked `airflow-runtime` dependencies in `pyproject.toml` / `uv.lock`:
-
-```bash
-make sync-dag
-```
-This command invokes the AWS CLI to upload content to the S3 bucket, make sure the AWS CLI has proper permission to the DAG S3 bucket.
-
-Only the **dag-processor** pod syncs from S3 into the cluster. Its sidecars re-sync dags, plugins, and python-deps every **30 seconds** into shared PVCs; triggerer and task pods mount those volumes without syncing. After `make sync-dag`, changes typically appear within one sync interval.
-
-Unchanged artifacts are skipped by comparing local content hashes against fingerprints stored in S3 under `s3://<bucket>/.artifact-hashes/`; if a fingerprint is missing in S3, the artifact is always uploaded.
-
-> **Python dependency updates:** Repackaging python-deps replaces the full dependency tree on S3. Syncing that while DAG runs are active can disrupt new tasks or DAG parsing. Wait for active runs to finish, or pause DAGs, before pushing dependency changes.
-
-For Helm value, secret changes or dependencies adjustment, run `make install sdg-controller` again.
-
-## Update model selections
+## Update Model Selections
 
 You can update models in two places, depending on whether you want per-run overrides or new defaults:
 
-1. **Per workflow run (payload override):** Set `cosmos.vlm_model`, `cosmos.llm_model`, `cosmos.image_edit_model`, `event_and_person_attribute_search.vlm_model`, and `event_and_person_attribute_search.llm_model` in the trigger payload. See the [Image Attribute Augmentation Payload Guide](image-attribute-augmentation/payload-guide.md#cosmos-fields-augmentation).
-2. **Default in-cluster endpoint models:** Edit `airflow/dags/workflows/image_attribute_augmentation_dag/configs/image_attribute_augmentation_k8s_manifest.yaml` (and the mirrored `deploy/.../image_attribute_augmentation_k8s_manifest.yaml`) under `deployment.components.endpoints.*`.
+1. **Per workflow run (payload override):** Set `cosmos.vlm_model`, `cosmos.llm_model`, `cosmos.image_edit_model`, `event_and_person_attribute_search.vlm_model`, and `event_and_person_attribute_search.llm_model` in the trigger payload. Refer to the [Image Attribute Augmentation Payload Guide](image-attribute-augmentation/payload-guide.md#cosmos-fields-augmentation).
+2. **Default in-cluster endpoint models:** Edit the workflow k8s manifest under `airflow/dags/workflows/<workflow>/configs/` (for example `image_attribute_augmentation_k8s_manifest.yaml`) under `deployment.components.endpoints.*`. Kubernetes profiles in those manifests use `in_cluster: true`.
 
 When updating default in-cluster endpoint models:
 
 - Update endpoint startup args in `container_args` (for example, `--model` and `--served-model-name`) and adjust the container image if needed.
-- Ensure your HuggingFace token has access to the selected model repositories.
-- Run `make sync-dag` to publish DAG/manifests updates.
+- Ensure your Hugging Face token has access to the selected model repositories.
+- Run `make build sdg-controller` to bake the updated manifests into the image, then `make install sdg-controller` to roll the deployment.
 
-## Scale internal model throughput
+## Scale Internal Model Throughput
 
-When `external_services` is `false`, workflows deploy an in-cluster model endpoint and routes augmentation work through its corresponding pool. That pool controls how many augmentation tasks may run at once against the internal model service.
+When `external_services` is `false`, workflows deploy an in-cluster model
+endpoint. Augmentation task overlap inside one DAG run is capped by
+`max_concurrency` on the augmentation task in that workflow's deployment
+manifest (applied as `max_active_tis_per_dagrun`). Internal augmentation uses
+`default_pool`; GPU endpoints and GPU batch tasks share `k8s_rtx6000_1`.
 
-For example, the image edit model service (used by the Image Attribute Augmentation workflow) uses the `iaa_internal_image_edit_service_pool` to control the number of augmentations that can be run in parallel:
-
-```yaml
-    - name: "iaa_internal_image_edit_service_pool"
-      slots: 2
-      description: "Image Attribute Augmentation internal image-edit service pool"
-      includeDeferred: true
-```
-
-If you intend to run **more than one replica** of a model service, set the pool **`slots`** to match the replica count you pass in the payload. For example, with three replicas of the image-edit model service:
+If you intend to run **more than one replica** of a model service, raise
+`max_concurrency` on the augmentation task to match the replica count you pass
+in the payload, and keep enough free slots in `k8s_rtx6000_1` for those
+replicas. For example, with three replicas of the image-edit model service:
 
 **Payload** (`service_lifecycle.image_edit_service.replicas`):
 
@@ -65,30 +45,32 @@ If you intend to run **more than one replica** of a model service, set the pool 
 }
 ```
 
-**Helm values** (`deploy/values.yaml`):
+**Manifest** (augmentation task):
 
 ```yaml
-    - name: "iaa_internal_image_edit_service_pool"
-      slots: 3
-      description: "Image Attribute Augmentation internal image-edit service pool"
-      includeDeferred: true
+augmentation:
+  max_concurrency: 3
 ```
 
-The full list of model services and their default size can be found below:
-| Service Name | Workflows The Use It | Pool Name | Default Size |
-| --- | --- | --- | --- |
-| Image Edit | Image Attribute Augmentation | `iaa_internal_image_edit_service_pool` | 2 |
-| Image2Video | Event Video Generation | `internal_image2video_service_pool` | 1 |
+External augmentation still uses service pools in `deploy/values.yaml`
+(`external_image_edit_service_pool`, `external_image2video_service_pool`, and
+`cosmos_transfer_3_service_pool`). OSMO DAGs use `osmo_h100_1` or
+`osmo_rtx6000_1` plus `OSMO_TOKEN`. After editing `deploy/values.yaml`, run
+`make install sdg-controller` so updated pools are created in Airflow. After
+editing a baked manifest, rebuild and roll the Airflow image.
+
+> **Warning:** `make install sdg-controller` runs `make uninstall` first, deleting
+> all Jobs, Deployments, StatefulSets, Services and Pods in the target namespace
+> (`sdg-workflow` by default), including other users' active runs and GPU services.
+> Pods are force-deleted; PVCs are retained. Run this only during a maintenance
+> window when no workflows or unrelated workloads are active in that namespace.
 
 
-If the pool has fewer slots than replicas, Airflow rate-limits augmentation tasks: extra replicas stay idle because only one task (by default) can hold a pool slot at a time. After editing `deploy/values.yaml`, run `make install sdg-controller` so the updated pool is created in Airflow.
-
-This applies to **internal** image-edit mode only. External augmentation uses external pools, which are sized separately for shared external endpoints.
-
-
-## Configure NFS storage
+## Configure NFS Storage
 
 The SDG controller expects a **`ReadWriteMany`** StorageClass named **`nfs`** by default (`deploy/values.yaml`). If your cluster does not already have one, install it with:
+
+> **Warning:** `make install nfs` modifies the selected node's operating system and restarts its NFS services. Run it only during initial cluster preparation, before installing CDF Orchestration or mounting PVCs from that server. Do not rerun it while NFS-backed workloads are active, especially when the NFS server and Kubernetes workloads share the same node; interrupted NFS I/O can make the host unresponsive. Before running the installer, verify that the host permits privileged pods, host filesystem access, package installation, system service management, and NFS mounts.
 
 ```bash
 make install nfs
@@ -97,11 +79,11 @@ make install nfs
 This runs `scripts/install_nfs.sh`, which:
 
 1. Creates the `nfs-system` namespace
-2. Starts an **NFS server on a cluster node host** (via a privileged Job with host mount)
+2. Starts an **NFS server on a cluster node host** (using a privileged Job with host mount)
 3. Deploys the [nfs-subdir-external-provisioner](https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner)
 4. Creates a StorageClass named **`nfs`**
 
-### Default node selection
+### Default Node Selection
 
 If you do not override anything, the script picks the **first node** returned by:
 
@@ -120,7 +102,7 @@ kubectl get node <that-node-name> -o jsonpath='{.status.addresses[?(@.type=="Int
 
 The install prints the resolved node and server IP before applying manifests.
 
-### Override variables
+### Override Variables
 
 Pass Make variables or export environment variables before `make install nfs`:
 
@@ -133,13 +115,13 @@ Pass Make variables or export environment variables before `make install nfs`:
 | `NFS_NAMESPACE` | `nfs-system` | Namespace for the NFS provisioner and setup Job |
 | `NFS_PROVISIONER_NAME` | `cluster.local/nfs-subdir-external-provisioner` | Provisioner name registered with Kubernetes |
 
-**Example — use a specific node:**
+**Example: use a specific node:**
 
 ```bash
 make install nfs NFS_NODE_HOSTNAME=4u8g-gen-0375
 ```
 
-**Example — set the server IP manually** (e.g. when the node has multiple addresses or you use a floating IP):
+**Example: set the server IP manually** (for example, when the node has multiple addresses or you use a floating IP):
 
 ```bash
 make install nfs \
@@ -147,7 +129,7 @@ make install nfs \
   NFS_SERVER=192.168.33.10
 ```
 
-**Example — custom export path and StorageClass name:**
+**Example: custom export path and StorageClass name:**
 
 ```bash
 make install nfs \
@@ -157,7 +139,7 @@ make install nfs \
 
 If you change `NFS_STORAGE_CLASS`, update matching `storageClassName` / `storageClass` fields in `deploy/values.yaml` before `make install sdg-controller`.
 
-### Where PVC data lives on the host
+### Where PVC Data Lives on the Host
 
 Each dynamically provisioned volume is a subdirectory under the export path:
 
@@ -175,43 +157,108 @@ For example, with the default export path:
 
 - **`envsubst`** (from the `gettext` package) must be on your PATH
 - The target node must allow a **privileged** pod with **host PID/network** and a host filesystem mount (the setup Job installs `nfs-kernel-server` into the node’s root filesystem)
-- Pick a node with enough **disk space** for PostgreSQL, DAG sync PVCs, and the **500Gi** model-cache PVC defined in `deploy/values.yaml`
+- Pick a node with enough **disk space** for PostgreSQL and the **500Gi** model-cache PVC defined in `deploy/values.yaml` (DAGs are not stored on NFS)
 
 ## Configure S3 Buckets
 
-Airflow uses S3 for three purposes:
-1. **DAG Artifacts** : Stores the DAG code, plugins, and 3rd-party dependencies on S3 to be pulled by the helm chart and loaded into the deployment. Code is stored on S3 to allow hot-reloading of the code without redeploying the helm chart.
+Airflow uses S3 for workflow **input** and **output**. DAG artifacts are **not** stored on S3.
 
-    **DAG artifact bucket layout** (created/used automatically):
+1. **Workflow Input**: Workflows require input data on S3. For example, Image Attribute Augmentation reads person-crop images. Upload datasets with the AWS CLI, then set `input_path` in the payload. Starter payloads live under [`payloads/dev/`](../payloads/dev/).
+2. **Workflow Output**: Datasets generated by the pipeline are published to S3 (`output_directory` and related payload fields).
 
-    ```
-    s3://$AWS_S3_DAG_BUCKET/dags/
-    s3://$AWS_S3_DAG_BUCKET/plugins/
-    s3://$AWS_S3_DAG_BUCKET/deps/
-    ```
+Helm injects one credential set (`AWS_S3_BUCKET`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY`) as:
 
-2. **Workflow Input**: Workflows require input data to work - for example the Image Attribute Augmentation DAG requires images as input which are then augmented by the pipeline. All input to a workflow must be taken from S3.
-3. **Workflow Output**: Datasets generated by the pipeline are published to S3
+- Airflow variables `aws_access_key_id`, `aws_secret_access_key`, `aws_region`, `aws_bucket`
+- A Multi-Storage Client profile for that same bucket
 
-For development and testing, input, output and DAGs can all be stored on the same S3 bucket, but to prevent overlap between the three use cases and more tightly control S3 access, it is recommended to use separate S3 buckets for each of these in production.
+CDF Orchestration supports long-lived IAM user credentials consisting of an access key ID and secret access key. Temporary AWS STS credentials, including assumed-role credentials, are not supported because there is no session-token configuration field.
 
-To use separate buckets, open `secrets.env` and remove fields for `AWS_S3_BUCKET`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, and `AWS_S3_SECRET_ACCESS_KEY`. Replace these with fine-grained configuration using the ENV variables listed below:
+A typical layout on one bucket:
 
 ```
-AWS_S3_DAG_BUCKET=
-AWS_S3_DAG_REGION=
-AWS_S3_DAG_ACCESS_KEY_ID=
-AWS_S3_DAG_SECRET_ACCESS_KEY=
-
-AWS_S3_INPUT_BUCKET=
-AWS_S3_INPUT_REGION=
-AWS_S3_INPUT_ACCESS_KEY_ID=
-AWS_S3_INPUT_SECRET_ACCESS_KEY=
-
-AWS_S3_OUTPUT_BUCKET=
-AWS_S3_OUTPUT_REGION=
-AWS_S3_OUTPUT_ACCESS_KEY_ID=
-AWS_S3_OUTPUT_SECRET_ACCESS_KEY=
+s3://$AWS_S3_BUCKET/input/<workflow>/
+s3://$AWS_S3_BUCKET/output/<workflow>/
 ```
 
-Then run `make setup` to apply this to your repo. Missing fields will be prompted for interactively.
+For example, after copying Image Attribute Augmentation images:
+
+```
+s3://<bucket-name>/input/image_attribute_augmentation/
+s3://<bucket-name>/output/image_attribute_augmentation/
+```
+
+Then run `make setup` so Helm secret values match `secrets.env`. Missing required fields are prompted for interactively.
+
+## Configure Other Storage Clients
+
+`make setup` always requires the S3 values above, and the chart generates a
+Multi-Storage Client (MSC) configuration containing only that S3 profile. To add
+other storage, such as an Azure Blob Storage container or a second bucket, keep
+that S3 profile and add the others in a Secret that you manage. DAG tasks read
+the MSC configuration from the `multistorageclient_configuration_secret` Airflow
+Variable, which `deploy/values.yaml` fills from a Kubernetes Secret.
+
+Storage support varies by workflow. Check the workflow's payload guide before
+using a provider other than S3; for example, the
+[AV dataset generation payload guide](autonomous-vehicle-dataset-generation/payload-guide.md)
+lists the providers its Curator stage supports.
+
+1. **Export the generated configuration** after `make install sdg-controller`
+   has created it, and keep the file owner-only because it contains credentials:
+
+   ```bash
+   kubectl get secret multistorageclient-configuration-secret -n sdg-workflow \
+     -o jsonpath='{.data.multistorageclient_configuration_secret}' | base64 -d > msc-config.json
+   chmod 600 msc-config.json
+   ```
+
+2. **Add profiles and path mappings** to `msc-config.json`. Keep the existing S3
+   profile. Each new profile needs a `storage_provider` and, for cloud storage, a
+   `credentials_provider`. Add a `path_mapping` entry for each native prefix that
+   payloads or workflow outputs use, so it resolves to the new `msc://` profile.
+   For example, an Azure container:
+
+   ```json
+   {
+     "profiles": {
+       "<existing-s3-profile>": { "...": "keep unchanged" },
+       "<azure-profile>": {
+         "storage_provider": {
+           "type": "azure",
+           "options": {
+             "base_path": "<container>/<prefix>",
+             "endpoint_url": "https://<account>.blob.core.windows.net"
+           }
+         },
+         "credentials_provider": {
+           "type": "AzureCredentials",
+           "options": { "connection": "<azure-connection-string>" }
+         }
+       }
+     },
+     "path_mapping": {
+       "...": "keep the existing S3 entries",
+       "az://<container>/<prefix>/": "msc://<azure-profile>/"
+     }
+   }
+   ```
+
+3. **Create your Secret** in the controller namespace from the file, so the
+   credentials do not appear in shell history:
+
+   ```bash
+   kubectl create secret generic cdf-storage-config -n sdg-workflow \
+     --from-file=multistorageclient_configuration_secret=msc-config.json
+   ```
+
+4. **Point Airflow at your Secret.** In `deploy/values.yaml`, set the
+   `secretName` of the `AIRFLOW_VAR_MULTISTORAGECLIENT_CONFIGURATION_SECRET`
+   entry to `cdf-storage-config`, then run `make install sdg-controller`. Delete
+   the local `msc-config.json`, or keep it in protected storage for later edits.
+
+`make uninstall` and `make install sdg-controller` do not delete Secrets that you
+create, so this configuration persists across reinstalls. If you change the S3
+values in `secrets.env`, update the S3 profile in your Secret as well. When you
+run the [storage mapping check](../skills/cdf-orchestration-preflight/scripts/storage_check.py),
+pass `--config msc-config.json`, because by default it reads the chart-generated
+Secret.

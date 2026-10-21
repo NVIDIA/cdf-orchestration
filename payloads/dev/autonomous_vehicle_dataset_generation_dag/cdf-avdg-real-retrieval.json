@@ -1,0 +1,13 @@
+{
+  "input_video_path": "msc://<input-profile>/av-input",
+  "output_directory": "msc://<output-profile>/av-output/retrieval",
+  "collection_name": "replace-with-unique-av-retrieval",
+  "search_mode": "embedding",
+  "query_video": "msc://<input-profile>/av-query/camera_front_wide_120fov.mp4",
+  "top_k": 1,
+  "limit": 1,
+  "collect_result_clips": true,
+  "cosmos": {
+    "enabled": false
+  }
+}
