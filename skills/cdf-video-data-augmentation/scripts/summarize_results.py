@@ -47,13 +47,9 @@ def summarize(root: Path) -> dict[str, Any]:
     evaluator_states: Counter[str] = Counter()
     per_video: Counter[str] = Counter()
     for video_dir in sorted(path for path in cosmos_root.iterdir() if path.is_dir()):
-        for candidate_dir in sorted(
-            path for path in video_dir.iterdir() if path.is_dir()
-        ):
+        for candidate_dir in sorted(path for path in video_dir.iterdir() if path.is_dir()):
             missing = [
-                name
-                for name in REQUIRED_CANDIDATE_FILES
-                if not (candidate_dir / name).is_file()
+                name for name in REQUIRED_CANDIDATE_FILES if not (candidate_dir / name).is_file()
             ]
             state = (
                 _evaluator_state(candidate_dir / "metadata.json")
@@ -76,9 +72,7 @@ def summarize(root: Path) -> dict[str, Any]:
     report_valid = False
     if report_present:
         try:
-            report_valid = isinstance(
-                json.loads(report_path.read_text(encoding="utf-8")), dict
-            )
+            report_valid = isinstance(json.loads(report_path.read_text(encoding="utf-8")), dict)
         except (OSError, json.JSONDecodeError):
             report_valid = False
 
@@ -123,19 +117,11 @@ def main() -> int:
             print(f"Complete candidates: {summary['complete_candidates']}")
             print(f"Incomplete candidates: {summary['incomplete_candidates']}")
             print(f"Auto-labeling input files: {summary['auto_labeling_input_files']}")
-            print(
-                f"Auto-labeling output files: {summary['auto_labeling_output_files']}"
-            )
-            print(
-                f"Training-export input files: {summary['training_export_input_files']}"
-            )
-            print(
-                f"Training-export output files: {summary['training_export_output_files']}"
-            )
+            print(f"Auto-labeling output files: {summary['auto_labeling_output_files']}")
+            print(f"Training-export input files: {summary['training_export_input_files']}")
+            print(f"Training-export output files: {summary['training_export_output_files']}")
             print(f"Evaluator states: {summary['evaluator_states']}")
-            print(
-                f"Report present/valid: {summary['report_present']}/{summary['report_valid']}"
-            )
+            print(f"Report present/valid: {summary['report_present']}/{summary['report_valid']}")
         return 0
     except (OSError, json.JSONDecodeError, SummaryError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

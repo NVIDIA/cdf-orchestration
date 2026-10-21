@@ -65,6 +65,7 @@ class OsmoTaskOperator(BaseOperator):
         "osmo_priority",
         "osmo_inputs",
         "osmo_token",
+        "osmo_url",
     )
 
     def __init__(
@@ -88,7 +89,7 @@ class OsmoTaskOperator(BaseOperator):
         osmo_binary: str = "osmo",
         osmo_env_vars: Optional[Dict[str, str]] = None,
         osmo_token: Optional[str] = None,
-        osmo_url: str = "https://us-west-2-aws.osmo.nvidia.com",
+        osmo_url: Optional[str] = None,
         name: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
@@ -271,6 +272,17 @@ class OsmoTaskOperator(BaseOperator):
     # ------------------------------------------------------------------
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.osmo_pool:
+            raise AirflowException(
+                "OSMO pool is not configured. Set OSMO_POOL in secrets.env (Airflow "
+                "variable osmo_pool), then rerun `make setup` and `make install sdg-controller`."
+            )
+        if self.osmo_token and not self.osmo_url:
+            raise AirflowException(
+                "OSMO URL is not configured. Set OSMO_URL in secrets.env (Airflow "
+                "variable osmo_url), then rerun `make setup` and `make install sdg-controller`."
+            )
+
         hook = self._get_hook()
 
         if self.osmo_token:
@@ -308,9 +320,10 @@ class OsmoTaskOperator(BaseOperator):
             )
 
         self._workflow_id = workflow_id
-        dashboard_url = f"{self.osmo_url}/workflows/{workflow_id}"
+        dashboard_url = f"{self.osmo_url}/workflows/{workflow_id}" if self.osmo_url else ""
         self.log.info("OSMO workflow submitted: %s", workflow_id)
-        self.log.info("OSMO dashboard: %s", dashboard_url)
+        if dashboard_url:
+            self.log.info("OSMO dashboard: %s", dashboard_url)
 
         status = self._poll_until_terminal(hook, workflow_id)
         self._stream_logs(hook, workflow_id, label="final")

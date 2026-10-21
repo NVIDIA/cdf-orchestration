@@ -93,25 +93,28 @@ internal-services payload cannot deploy what it needs:
   does not reference it.) The OSMO manifest's `components.endpoints` key is absent — that is the
   structural reason internal mode cannot work here.
 
-**Check `OSMO_TOKEN` before triggering an OSMO run — and only then.** It is optional at deploy
-time, so a perfectly healthy controller can be running with an empty token: `make setup` does not
-validate it and the chart renders `osmo_token: ""`, so the DAG registers and triggers normally and
-only fails once a task tries to reach OSMO. Do not raise this during environment setup or for
-Kubernetes runs; it is a precondition of the OSMO path specifically. Verify against the cluster
-(authoritative — local deployment configuration may have changed since the last deploy):
+**Check `OSMO_TOKEN`, `OSMO_URL` and `OSMO_POOL` before triggering an OSMO run — and only
+then.** They are optional at deploy time, so a perfectly healthy controller can be running with
+them empty: `make setup` does not validate them and the chart renders empty values, so the DAG
+registers and triggers normally and only fails once a task tries to reach OSMO. Do not raise this
+during environment setup or for Kubernetes runs; it is a precondition of the OSMO path
+specifically. Verify against the cluster (authoritative — local deployment configuration may have
+changed since the last deploy):
 
 ```bash
 (set -o pipefail
-kubectl get secret -n sdg-workflow osmo-token-secret \
-  -o jsonpath='{.data.osmo_token}' | python3 -c \
-  'import base64, sys; print("OSMO_TOKEN: set" if base64.b64decode(sys.stdin.read().strip(), validate=True) else "OSMO_TOKEN: unset")'
-)
-# A kubectl or decoding error is a failed check; never print the value or its length.
+kubectl get secret -n sdg-workflow osmo-token-secret -o json | python3 -c '
+import base64, json, sys
+data = json.load(sys.stdin).get("data", {})
+for key, name in (("osmo_token", "OSMO_TOKEN"), ("osmo_url", "OSMO_URL"), ("osmo_pool", "OSMO_POOL")):
+    print(f"{name}: " + ("set" if base64.b64decode(data.get(key, ""), validate=True) else "unset"))
+')
+# A kubectl or decoding error is a failed check; never print the values or their lengths.
 ```
 
-If it is empty, stop before triggering. Tell the user that `OSMO_TOKEN` must be configured and the
-controller redeployed so the secret is recreated and the pods pick it up, and route that
-configuration to the environment-setup skill. Do not set, write, or handle the token yourself.
+If any is unset, stop before triggering. Tell the user which settings must be configured and the
+controller redeployed so the secret is recreated and the pods pick them up, and route that
+configuration to the environment-setup skill. Do not set, write, or handle these values yourself.
 
 There is a **single end-to-end pipeline per platform** — there are no generation-only or
 labeling-only DAG variants. If a user asks for video generation without auto-labeling, tell them

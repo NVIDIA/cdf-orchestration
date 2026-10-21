@@ -9,7 +9,7 @@ Recommended for publication based on the completed evaluation evidence in this r
 ## Evaluation Metadata
 
 - Skill: `cdf-orchestration-setup`
-- Evaluation date: 2026-10-20
+- Evaluation date: 2026-10-21
 - Evaluator version: `1.5.6`
 - Agents: Claude Code (`aws/anthropic/bedrock-claude-opus-4-8`), Codex (`openai/openai/gpt-5.5`)
 - Tasks: 11 evaluation tasks (9 positive, 2 negative)
@@ -35,12 +35,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 85.8% — baseline ran, but no comparable score was available; uplift unavailable | 74.9% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 90.9% → 100.0% (+9.1 points) | 68.2% → 100.0% (+31.8 points) |
-| Correctness | 20.0% → 83.6% (+63.6 points) | 21.8% → 70.9% (+49.1 points) |
-| Discoverability | 96.4% — baseline ran, but no comparable score was available; uplift unavailable | 58.3% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 22.4% → 58.6% (+36.2 points) | 16.7% → 52.3% (+35.6 points) |
-| Efficiency | 90.3% — baseline ran, but no comparable score was available; uplift unavailable | 93.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 85.8% — baseline ran, but no comparable score was available; uplift unavailable | 70.6% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 90.9% → 95.5% (+4.6 points) | 54.6% → 77.3% (+22.7 points) |
+| Correctness | 16.4% → 85.5% (+69.1 points) | 16.4% → 74.6% (+58.2 points) |
+| Discoverability | 91.4% — baseline ran, but no comparable score was available; uplift unavailable | 72.2% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 24.9% → 62.7% (+37.8 points) | 19.9% → 45.8% (+25.9 points) |
+| Efficiency | 93.9% — baseline ran, but no comparable score was available; uplift unavailable | 83.3% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -54,31 +54,31 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 2,590,872 | 2,099,628 | +491,244 | +23.40% | skill 11/11; base 11/11 |
-| claude-code | blocked-preflight-stops-setup | 66,397 | 123,607 | -57,210 | -46.28% | skill 1/1; base 1/1 |
-| claude-code | dag-update-rebuilds-image | 160,618 | 89,436 | +71,182 | +79.59% | skill 1/1; base 1/1 |
-| claude-code | first-install-builds-controller | 304,564 | 398,156 | -93,592 | -23.51% | skill 1/1; base 1/1 |
-| claude-code | k3s-is-not-supported | 127,930 | 218,334 | -90,404 | -41.41% | skill 1/1; base 1/1 |
-| claude-code | negative-prerequisite-audit | 120,359 | 90,634 | +29,725 | +32.80% | skill 1/1; base 1/1 |
-| claude-code | negative-run-event-video | 30,380 | 155,818 | -125,438 | -80.50% | skill 1/1; base 1/1 |
-| claude-code | one-gpu-service-mode | 274,350 | 246,946 | +27,404 | +11.10% | skill 1/1; base 1/1 |
-| claude-code | osmo-external-only | 493,005 | 316,729 | +176,276 | +55.66% | skill 1/1; base 1/1 |
-| claude-code | post-install-verification-retained | 368,190 | 154,265 | +213,925 | +138.67% | skill 1/1; base 1/1 |
-| claude-code | preflight-required-before-install | 222,859 | 153,429 | +69,430 | +45.25% | skill 1/1; base 1/1 |
-| claude-code | values-only-redeploy | 422,220 | 152,274 | +269,946 | +177.28% | skill 1/1; base 1/1 |
-| codex | All cases | 1,409,131 | 3,655,359 | -2,246,228 | -61.45% | skill 11/11; base 11/11 |
-| codex | blocked-preflight-stops-setup | 201,840 | 530,166 | -328,326 | -61.93% | skill 1/1; base 1/1 |
-| codex | dag-update-rebuilds-image | 13,529 | 17,926 | -4,397 | -24.53% | skill 1/1; base 1/1 |
-| codex | first-install-builds-controller | 144,556 | 798,473 | -653,917 | -81.90% | skill 1/1; base 1/1 |
-| codex | k3s-is-not-supported | 235,511 | 115,041 | +120,470 | +104.72% | skill 1/1; base 1/1 |
-| codex | negative-prerequisite-audit | 128,023 | 55,836 | +72,187 | +129.28% | skill 1/1; base 1/1 |
-| codex | negative-run-event-video | 13,853 | 70,829 | -56,976 | -80.44% | skill 1/1; base 1/1 |
-| codex | one-gpu-service-mode | 129,461 | 130,781 | -1,320 | -1.01% | skill 1/1; base 1/1 |
-| codex | osmo-external-only | 170,494 | 1,618,745 | -1,448,251 | -89.47% | skill 1/1; base 1/1 |
-| codex | post-install-verification-retained | 41,034 | 86,317 | -45,283 | -52.46% | skill 1/1; base 1/1 |
-| codex | preflight-required-before-install | 152,966 | 114,879 | +38,087 | +33.15% | skill 1/1; base 1/1 |
-| codex | values-only-redeploy | 177,864 | 116,366 | +61,498 | +52.85% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 4,000,003 | 5,754,987 | -1,754,984 | -30.50% | skill 22/22; base 22/22 |
+| claude-code | All cases | 2,228,358 | 2,528,789 | -300,431 | -11.88% | skill 11/11; base 11/11 |
+| claude-code | blocked-preflight-stops-setup | 66,351 | 183,917 | -117,566 | -63.92% | skill 1/1; base 1/1 |
+| claude-code | dag-update-rebuilds-image | 130,124 | 89,567 | +40,557 | +45.28% | skill 1/1; base 1/1 |
+| claude-code | first-install-builds-controller | 301,238 | 547,889 | -246,651 | -45.02% | skill 1/1; base 1/1 |
+| claude-code | k3s-is-not-supported | 130,509 | 185,728 | -55,219 | -29.73% | skill 1/1; base 1/1 |
+| claude-code | negative-prerequisite-audit | 152,522 | 121,844 | +30,678 | +25.18% | skill 1/1; base 1/1 |
+| claude-code | negative-run-event-video | 158,859 | 61,370 | +97,489 | +158.85% | skill 1/1; base 1/1 |
+| claude-code | one-gpu-service-mode | 176,294 | 563,827 | -387,533 | -68.73% | skill 1/1; base 1/1 |
+| claude-code | osmo-external-only | 294,777 | 222,505 | +72,272 | +32.48% | skill 1/1; base 1/1 |
+| claude-code | post-install-verification-retained | 184,709 | 152,217 | +32,492 | +21.35% | skill 1/1; base 1/1 |
+| claude-code | preflight-required-before-install | 298,502 | 185,039 | +113,463 | +61.32% | skill 1/1; base 1/1 |
+| claude-code | values-only-redeploy | 334,473 | 214,886 | +119,587 | +55.65% | skill 1/1; base 1/1 |
+| codex | All cases | 1,942,229 | 3,798,041 | -1,855,812 | -48.86% | skill 11/11; base 11/11 |
+| codex | blocked-preflight-stops-setup | 227,851 | 466,172 | -238,321 | -51.12% | skill 1/1; base 1/1 |
+| codex | dag-update-rebuilds-image | 18,091 | 13,676 | +4,415 | +32.28% | skill 1/1; base 1/1 |
+| codex | first-install-builds-controller | 195,825 | 1,187,951 | -992,126 | -83.52% | skill 1/1; base 1/1 |
+| codex | k3s-is-not-supported | 180,257 | 353,728 | -173,471 | -49.04% | skill 1/1; base 1/1 |
+| codex | negative-prerequisite-audit | 41,396 | 57,585 | -16,189 | -28.11% | skill 1/1; base 1/1 |
+| codex | negative-run-event-video | 103,013 | 222,210 | -119,197 | -53.64% | skill 1/1; base 1/1 |
+| codex | one-gpu-service-mode | 174,954 | 108,128 | +66,826 | +61.80% | skill 1/1; base 1/1 |
+| codex | osmo-external-only | 232,334 | 769,077 | -536,743 | -69.79% | skill 1/1; base 1/1 |
+| codex | post-install-verification-retained | 382,787 | 131,925 | +250,862 | +190.16% | skill 1/1; base 1/1 |
+| codex | preflight-required-before-install | 165,850 | 146,858 | +18,992 | +12.93% | skill 1/1; base 1/1 |
+| codex | values-only-redeploy | 219,871 | 340,731 | -120,860 | -35.47% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 4,170,587 | 6,326,830 | -2,156,243 | -34.08% | skill 22/22; base 22/22 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. N/A means the relevant trajectory counters were not available; coverage is never estimated.
 
@@ -96,14 +96,14 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 <summary>Show detailed findings and successful checks</summary>
 
 - **HIGH** DUPLICATE/duplicate: Duplicate content found across SKILL.md and references/deploy-controller.md:
-  "## Deploy a controller on the current cluster" in SKILL.md (lines 128-131)
-  vs "# Deploy the controller" in references/deploy-controller.md (lines 32-35) (`SKILL.md:128`)
-- **HIGH** DUPLICATE/duplicate: Duplicate content found across SKILL.md and references/deploy-controller.md:
-  "## Deploy a controller on the current cluster" in SKILL.md (lines 107-108)
-  vs "# Deploy the controller" in references/deploy-controller.md (lines 19-20) (`SKILL.md:107`)
+  "## Deploy a controller on the current cluster" in SKILL.md (lines 129-132)
+  vs "# Deploy the controller" in references/deploy-controller.md (lines 32-35) (`SKILL.md:129`)
 - **HIGH** DUPLICATE/duplicate: Duplicate content found across SKILL.md and references/deploy-controller.md:
   "## Deploy a controller on the current cluster" in SKILL.md (lines 116-121)
   vs "# Deploy the controller" in references/deploy-controller.md (lines 26-31) (`SKILL.md:116`)
+- **HIGH** DUPLICATE/duplicate: Duplicate content found across SKILL.md and references/deploy-controller.md:
+  "## Deploy a controller on the current cluster" in SKILL.md (lines 107-108)
+  vs "# Deploy the controller" in references/deploy-controller.md (lines 19-20) (`SKILL.md:107`)
 - **HIGH** DUPLICATE/duplicate: Duplicate content found across SKILL.md and references/deploy-controller.md:
   "## Deploy a controller on the current cluster" in SKILL.md (lines 72-85)
   vs "## Deploy a controller on the current cluster" in SKILL.md (lines 87-99)

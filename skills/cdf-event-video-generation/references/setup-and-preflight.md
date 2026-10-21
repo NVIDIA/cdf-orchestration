@@ -128,8 +128,8 @@ For Airflow-level preflight (DAG loaded, pools have slots, pods healthy), follow
 ## OSMO capacity
 
 Use the selected manifest's `deployment.profiles` to distinguish the Airflow concurrency pool
-(`osmo_rtx6000_1` currently) from the OSMO compute pool (`metropolis-rtx6000-01` currently).
-With the configured OSMO CLI, check `osmo pool list` and
-`osmo resource list --pool <manifest-osmo-pool> --mode free`. Require available quota and an
+(`osmo_rtx6000_1` currently) from the OSMO compute pool, which the `osmo_pool` Airflow variable
+sets from `OSMO_POOL`. With the configured OSMO CLI, check `osmo pool list` and
+`osmo resource list --pool <osmo-pool> --mode free`. Require available quota and an
 eligible node with the task's requested GPU, CPU, memory and storage. Airflow open slots alone
 do not establish OSMO compute availability.

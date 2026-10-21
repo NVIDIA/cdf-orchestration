@@ -33,4 +33,3 @@ ignore = []
 
 [tool.ruff.lint.isort]
 known-third-party = ["airflow"]
-

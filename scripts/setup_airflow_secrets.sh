@@ -21,6 +21,10 @@
 #
 # Optional variables:
 #   - OSMO_TOKEN  OSMO Personal Access Token for OSMO DAGs (Airflow var osmo_token)
+#   - OSMO_POOL   OSMO compute pool for OSMO DAGs (Airflow var osmo_pool); required to run them
+#   - OSMO_URL    OSMO service URL (Airflow var osmo_url); required with OSMO_TOKEN
+#   - OSMO_HF_CACHE_SEED_DIR  Pre-populated Hugging Face cache mounted on the OSMO pool
+#     (Airflow var osmo_hf_cache_seed_dir); when empty, models download with HF_TOKEN
 #   - AWS_S3_BUCKET, AWS_S3_REGION, AWS_S3_ACCESS_KEY_ID, AWS_S3_SECRET_ACCESS_KEY
 #     One bucket and one credential set used for MSC and Airflow AWS variables.
 #   - VLM_API_KEY, LLM_API_KEY  Optional model endpoint credentials. SMT AnomalyGen
@@ -270,6 +274,9 @@ cat > "$SECRET_VALUES_DEV_FILE" <<EOF
         hfToken: "$HF_TOKEN"
       osmo:
         token: "${OSMO_TOKEN:-}"
+        url: "${OSMO_URL:-}"
+        pool: "${OSMO_POOL:-}"
+        hfCacheSeedDir: "${OSMO_HF_CACHE_SEED_DIR:-}"
 EOF
 
 K8S_KUBECONFIG_JSON=$(printf '%s' "$K8S_REMOTE_KUBECONFIG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
@@ -284,9 +291,11 @@ echo "Generating $LOCAL_SECRETS_ENV_FILE..."
   for var_name in "${REQUIRED_SECRET_VARS[@]}"; do
     printf '%s=%q\n' "$var_name" "${!var_name}"
   done
-  if [ -n "${OSMO_TOKEN:-}" ]; then
-    printf 'OSMO_TOKEN=%q\n' "$OSMO_TOKEN"
-  fi
+  for var_name in OSMO_TOKEN OSMO_URL OSMO_POOL OSMO_HF_CACHE_SEED_DIR; do
+    if [ -n "${!var_name:-}" ]; then
+      printf '%s=%q\n' "$var_name" "${!var_name}"
+    fi
+  done
   for var_name in VLM_API_KEY LLM_API_KEY; do
     if [ -n "${!var_name:-}" ]; then
       printf '%s=%q\n' "$var_name" "${!var_name}"

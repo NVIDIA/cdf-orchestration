@@ -90,9 +90,7 @@ class SmtDefectImageGenerationDAGBuilder:
 
     @staticmethod
     def _select_checkpoint_route(**context) -> str:
-        payload = context["ti"].xcom_pull(
-            task_ids="validate_payload", key="return_value"
-        )
+        payload = context["ti"].xcom_pull(task_ids="validate_payload", key="return_value")
         return (
             "join_after_checkpoint"
             if payload.get("external_services", False)
@@ -115,9 +113,7 @@ class SmtDefectImageGenerationDAGBuilder:
             start_date=datetime(2026, 1, 1),
             schedule=None,
             catchup=False,
-            dagrun_timeout=resolve_dag_timeout(
-                self.builder.manifest.deployment.dag_timeout
-            ),
+            dagrun_timeout=resolve_dag_timeout(self.builder.manifest.deployment.dag_timeout),
             on_success_callback=on_success_callback,
             on_failure_callback=on_failure_callback,
             max_active_runs=5,
@@ -150,9 +146,7 @@ class SmtDefectImageGenerationDAGBuilder:
             simulation = self.builder.partial_task(
                 "image_generation", task_id=SIMULATION_TASK_ID
             ).expand(
-                runtime_environment_variables=XComArg(
-                    generated["image_generation_environments"]
-                )
+                runtime_environment_variables=XComArg(generated["image_generation_environments"])
             )
             mode = "{{ (ti.xcom_pull(task_ids='validate_payload', key='return_value') or {}).get('pipeline_mode', 'full') }}"
             select_input_route = BranchPythonOperator(
@@ -182,9 +176,7 @@ class SmtDefectImageGenerationDAGBuilder:
             lifecycle = ServiceLifecycleTaskGroup(
                 builder=self.builder,
                 service_lifecycle_config="{{ (ti.xcom_pull(task_ids='validate_payload', key='return_value') or {}).get('service_lifecycle', {}) | tojson }}",
-                service_specs=(
-                    ServiceLifecycleSpec("image_edit_service", "wait_for_image_edit"),
-                ),
+                service_specs=(ServiceLifecycleSpec("image_edit_service", "wait_for_image_edit"),),
             )
             wait = lifecycle.get_wait_for_services_tasks()["image_edit_service"]
             startup = lifecycle.get_service_startup_task_group()
@@ -261,13 +253,7 @@ class SmtDefectImageGenerationDAGBuilder:
             checkpoint >> join_after_checkpoint >> [startup, wait]
             [continue_after_simulation, wait] >> augmentation
             augmentation >> [shutdown, continue_after_augmentation]
-            (
-                continue_after_augmentation
-                >> package
-                >> generation
-                >> outputs
-                >> pipeline_success
-            )
+            (continue_after_augmentation >> package >> generation >> outputs >> pipeline_success)
             [
                 simulation,
                 dag.get_task(AUGMENTATION_VALIDATION_TASK_ID),

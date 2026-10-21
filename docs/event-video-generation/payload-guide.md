@@ -151,8 +151,9 @@ external Arbitrator root URL. Alternatively, disable both checks explicitly:
 
 The external starter payloads are suitable for OSMO after replacing their
 deployment-specific paths and endpoint URLs. Do not use
-`warehouse-safety-mix-internal-10.json` with the OSMO DAG. `OSMO_TOKEN` is an
-Airflow/deployment secret and is not part of the runtime payload. All supplied
+`warehouse-safety-mix-internal-10.json` with the OSMO DAG. `OSMO_TOKEN`, `OSMO_URL`
+and `OSMO_POOL` are deployment settings in `secrets.env`, not part of the runtime
+payload. All supplied
 service URLs must be reachable from the OSMO task network.
 
 ## Required Fields at a Glance

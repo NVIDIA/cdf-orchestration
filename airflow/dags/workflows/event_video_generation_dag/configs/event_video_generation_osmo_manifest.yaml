@@ -15,8 +15,9 @@ deployment:
       pool_slots: 1
       operator: OsmoTaskOperator
       configuration:
-        osmo_pool: metropolis-rtx6000-01
+        osmo_pool: "{{ var.value.get('osmo_pool', '') }}"
         osmo_token: "{{ var.value.osmo_token }}"
+        osmo_url: "{{ var.value.get('osmo_url', '') }}"
         osmo_gpu: 1
         osmo_cpu: 11
         osmo_memory: "100Gi"

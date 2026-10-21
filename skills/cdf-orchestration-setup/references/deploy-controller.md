@@ -80,16 +80,19 @@ DAGs are baked into the image. For separate buckets, follow
 | Variable | Purpose |
 |---|---|
 | `OSMO_TOKEN` | OSMO API credential, surfaced to DAGs as the `AIRFLOW_VAR_OSMO_TOKEN` env var from the chart-managed `osmo-token-secret` (`deploy/values.yaml`) |
+| `OSMO_POOL` | OSMO compute pool the OSMO DAGs submit to (`AIRFLOW_VAR_OSMO_POOL`, same secret). OSMO tasks fail at run time with a clear error while it is empty |
+| `OSMO_URL` | OSMO service URL the token logs in to (`AIRFLOW_VAR_OSMO_URL`, same secret). OSMO tasks with a token fail at run time with a clear error while it is empty |
+| `OSMO_HF_CACHE_SEED_DIR` | Pre-populated Hugging Face cache directory mounted on the OSMO pool (`AIRFLOW_VAR_OSMO_HF_CACHE_SEED_DIR`, same secret). Empty makes OSMO video augmentation download models with `HF_TOKEN` |
 
-`make setup` does **not** validate `OSMO_TOKEN`. It reports "All required secrets are set" without
-it and writes an empty `global.secrets.osmo.token` into the generated Helm values, so the install
-succeeds and the OSMO DAGs register normally; the gap only surfaces at run time. That is the
-intended behaviour — a Kubernetes-only deployment does not need the token, and OSMO manifests ship
-with the repository regardless of what this user plans to run, so do **not** prompt for it during
-setup. The workflow skills check it when an OSMO run is actually requested.
+`make setup` does **not** validate the OSMO settings. It reports "All required secrets are set"
+without them and writes empty `global.secrets.osmo.*` values into the generated Helm values, so the
+install succeeds and the OSMO DAGs register normally; the gap only surfaces at run time. That is
+the intended behaviour — a Kubernetes-only deployment does not need them, and OSMO manifests ship
+with the repository regardless of what this user plans to run, so do **not** prompt for them
+during setup. The workflow skills check them when an OSMO run is actually requested.
 
-If a user does want it, it belongs in `secrets.env` (already listed in `secrets.env.example` as
-optional), followed by `make setup` and a redeploy. Never write it into
+If a user does want them, they belong in `secrets.env` (already listed in `secrets.env.example` as
+optional), followed by `make setup` and a redeploy. Never write them into
 `deploy/secret_values_dev.yaml` — that file is generated and the next `make setup` overwrites it.
 
 `KUBECONFIG` is **not** one of them and is not in `secrets.env.example`. `make setup` reads it

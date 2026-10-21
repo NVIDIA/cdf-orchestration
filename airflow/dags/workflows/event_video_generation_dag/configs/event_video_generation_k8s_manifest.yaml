@@ -209,7 +209,7 @@ deployment:
           --use-hsdp
           --hsdp-shard-size 2
           --init-timeout 1800
-   
+
         configuration:
           inference_port: 8000
           health_uri: /health
@@ -274,4 +274,4 @@ deployment:
           LLM_API_KEY: "{{ conn.nvcf_default.password }}"
           COSMOS_API_KEY: "{{ conn.nvcf_default.password }}"
         configuration:
-          retries: 3          
+          retries: 3

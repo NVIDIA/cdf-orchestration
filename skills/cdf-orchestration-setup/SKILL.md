@@ -146,11 +146,12 @@ are removed and the `global.secrets.aws` block is reset. If the user keeps custo
 file, ask them to back it up first. Only skip it mid-session when the agent itself just ran it
 moments earlier.
 
-`OSMO_TOKEN` is optional at deploy time and **not** something to prompt for here. OSMO manifests
-ship with the repository, so their presence says nothing about whether this user intends to run an
-OSMO workflow; `secrets.env.example` already documents the variable for those who do. A
-Kubernetes-only deployment never needs it. The workflow skills check it at trigger time, which is
-the only point where its absence actually matters — see
+The OSMO settings (`OSMO_TOKEN`, `OSMO_URL`, `OSMO_POOL` and the optional
+`OSMO_HF_CACHE_SEED_DIR`) are optional at deploy time and **not** something to prompt for here.
+OSMO manifests ship with the repository, so their presence says nothing about whether this user
+intends to run an OSMO workflow; `secrets.env.example` already documents the variables for those
+who do. A Kubernetes-only deployment never needs them. The workflow skills check them at trigger
+time, which is the only point where their absence actually matters — see
 [deploy-controller.md](references/deploy-controller.md) for what `make setup` does with it.
 
 **Missing namespace** — if `kubectl get ns sdg-workflow` returns `NotFound`, this is a normal

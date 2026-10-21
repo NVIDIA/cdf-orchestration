@@ -70,9 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Summarize downloaded SDG Event Video Generation results."
     )
     parser.add_argument("--results-dir", required=True)
-    parser.add_argument(
-        "--json", action="store_true", help="Print machine-readable JSON."
-    )
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     return parser
 
 

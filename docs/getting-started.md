@@ -77,7 +77,7 @@ This project requires the following secrets:
 - **S3 Credentials**: Refer to the instructions from the [previous step](#buckets-and-credentials) for AWS credential setup.
 
 Optional secrets:
-- **OSMO_TOKEN**: Required only if you trigger OSMO DAGs (`*_dag_osmo`).
+- **OSMO_TOKEN**, **OSMO_URL** and **OSMO_POOL**: Required only if you trigger OSMO DAGs (`*_dag_osmo`). `OSMO_URL` is your OSMO service URL and `OSMO_POOL` is the OSMO compute pool the tasks run on. Optionally set `OSMO_HF_CACHE_SEED_DIR`, a pre-populated Hugging Face cache mounted on your pool that OSMO video augmentation uses instead of downloading models with `HF_TOKEN`.
 - **VLM_API_KEY**: Required to generate defects with SMT Defect Image Generation's recommended GPT-6 Astra endpoint. If it is not set, SMT AnomalyGen falls back to the NGC key, which works only with endpoints that accept it.
 - **LLM_API_KEY**: Optional model endpoint credential.
 
@@ -101,7 +101,7 @@ After the secrets are ready, set them up in the repo using the following steps:
    `AWS_S3_SECRET_ACCESS_KEY`, using the credentials described above. Complete this
    before running preflight or `make setup`.
 
-   Set `OSMO_TOKEN` if you will run OSMO DAGs. Set `VLM_API_KEY` and `LLM_API_KEY`
+   Set `OSMO_TOKEN`, `OSMO_URL` and `OSMO_POOL` if you will run OSMO DAGs. Set `VLM_API_KEY` and `LLM_API_KEY`
    when required by your model endpoints, as described under [Secrets](#secrets).
    Leave unused optional values empty.
 

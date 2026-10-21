@@ -59,14 +59,14 @@ postgresql:
             WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'airflow')\gexec
             GRANT ALL PRIVILEGES ON DATABASE airflow TO $POSTGRES_USER;
           EOSQL
-          
+
           # Create sdg_workflow database if it doesn't exist
           psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "postgres" <<-EOSQL
             SELECT 'CREATE DATABASE sdg_workflow'
             WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sdg_workflow')\gexec
             GRANT ALL PRIVILEGES ON DATABASE sdg_workflow TO $POSTGRES_USER;
           EOSQL
-          
+
           echo "Databases created successfully!"
           echo "- airflow"
           echo "- sdg_workflow"
@@ -155,6 +155,15 @@ airflow:
     - envName: "AIRFLOW_VAR_OSMO_TOKEN"
       secretName: "osmo-token-secret"
       secretKey: "osmo_token"
+    - envName: "AIRFLOW_VAR_OSMO_URL"
+      secretName: "osmo-token-secret"
+      secretKey: "osmo_url"
+    - envName: "AIRFLOW_VAR_OSMO_POOL"
+      secretName: "osmo-token-secret"
+      secretKey: "osmo_pool"
+    - envName: "AIRFLOW_VAR_OSMO_HF_CACHE_SEED_DIR"
+      secretName: "osmo-token-secret"
+      secretKey: "osmo_hf_cache_seed_dir"
 
   # Airflow config overrides (merged with chart defaults via config.section.key)
   config:

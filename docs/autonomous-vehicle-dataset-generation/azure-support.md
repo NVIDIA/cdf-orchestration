@@ -279,9 +279,9 @@ Then:
    | `collect_results` and `validate_retrieval` | Save and validate `search_result.json` and copied clips under `results/`. |
 
    Files are saved under
-   `az://av-data/results/search-test-01/<sanitized-run-id>/`. Open `search_result.json`, 
-   confirm `hits` contains a source clip rather than the query itself, and 
-   open a copied video from `results/`. Verify the complete DAG succeeds and 
+   `az://av-data/results/search-test-01/<sanitized-run-id>/`. Open `search_result.json`,
+   confirm `hits` contains a source clip rather than the query itself, and
+   open a copied video from `results/`. Verify the complete DAG succeeds and
    service shutdown finishes. Generation tasks are expected to be skipped in this run.
 
 4. **Run a separate generation test.** Continue only after the search test
@@ -291,7 +291,7 @@ Then:
    Set `cosmos.enabled` to `true` and provide the required generation prompt.
    Verify at least one accepted generated video, evaluation results, and the
    final file list in Azure. Open the video to check it works.
-   
+
 5. Confirm services shut down after both successful and failed runs. Repeat
    setup on a fresh machine using only the documented instructions.
 

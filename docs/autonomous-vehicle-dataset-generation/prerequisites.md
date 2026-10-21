@@ -75,4 +75,3 @@ below, and verify the claim is `Bound` with `kubectl get pvc shared-ffmpeg -n sd
 | Decoder | `h264` |
 | Encoder | `libopenh264` for resampling RGB clips and extracting WSM control windows. |
 | Version | FFmpeg 8.1.x with `libavcodec` 62, matching Curator 2.3.0's Python video reader. |
-

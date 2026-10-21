@@ -147,7 +147,8 @@ check remains enabled, add an external Arbitrator URL:
 You may instead disable all three checks, in which case no evaluator URL is
 needed. The JSON above is only the evaluator portion of an OSMO payload; retain
 all inference endpoint fields from the full external-services example.
-`OSMO_TOKEN` is an Airflow/deployment secret and is not a runtime payload field.
+`OSMO_TOKEN`, `OSMO_URL`, `OSMO_POOL` and the optional `OSMO_HF_CACHE_SEED_DIR` are
+deployment settings in `secrets.env`, not runtime payload fields.
 All supplied service URLs must be reachable from the OSMO task network.
 
 ## Fields to Set for Every Run

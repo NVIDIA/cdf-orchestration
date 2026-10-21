@@ -146,12 +146,10 @@ class OsmoHook(BaseHook):
     # Authentication
     # ------------------------------------------------------------------
 
-    _DEFAULT_OSMO_URL = "https://us-west-2-aws.osmo.nvidia.com"
-
     def login(
         self,
         token: str,
-        url: str = _DEFAULT_OSMO_URL,
+        url: str,
     ) -> None:
         """Authenticate with OSMO using a Personal Access Token.
 

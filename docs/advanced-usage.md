@@ -55,7 +55,9 @@ augmentation:
 External augmentation still uses service pools in `deploy/values.yaml`
 (`external_image_edit_service_pool`, `external_image2video_service_pool`, and
 `cosmos_transfer_3_service_pool`). OSMO DAGs use `osmo_h100_1` or
-`osmo_rtx6000_1` plus `OSMO_TOKEN`. After editing `deploy/values.yaml`, run
+`osmo_rtx6000_1` plus `OSMO_TOKEN` and `OSMO_URL`, and submit to the OSMO compute pool set
+by `OSMO_POOL` (see `secrets.env.example` for the optional `OSMO_HF_CACHE_SEED_DIR`).
+After editing `deploy/values.yaml`, run
 `make install sdg-controller` so updated pools are created in Airflow. After
 editing a baked manifest, rebuild and roll the Airflow image.
 

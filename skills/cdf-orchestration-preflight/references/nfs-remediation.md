@@ -49,4 +49,3 @@ Run only after approval. Stop on the first failure. Then verify the setup Job co
 `nfs-subdir-external-provisioner` Deployment is Available, the StorageClass exists with the
 expected provisioner, and recent events include nothing of type `Warning`. A PVC/mount test is a separate cluster
 mutation and needs its own approval; clean up only the resources created for that test.
-

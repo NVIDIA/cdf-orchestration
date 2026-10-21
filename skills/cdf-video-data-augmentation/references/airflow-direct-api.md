@@ -79,7 +79,9 @@ RESPONSE="$RESPONSE" python3 -c \
   "import json,os; print(json.loads(os.environ['RESPONSE']).get('conn_type'))"
 ```
 
-For OSMO, also confirm the OSMO connection/token and `osmo_rtx6000_1` capacity. OSMO cannot deploy
+For OSMO, also confirm that the `osmo_token`, `osmo_url` and `osmo_pool` keys of
+`osmo-token-secret` are non-empty (check presence only, never print values; route missing
+settings to the environment-setup skill) and `osmo_rtx6000_1` capacity. OSMO cannot deploy
 the VLM, LLM, Cosmos Transfer, or Cosmos Evaluator services.
 
 ## Trigger one run

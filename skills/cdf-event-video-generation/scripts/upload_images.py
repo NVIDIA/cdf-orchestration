@@ -34,9 +34,7 @@ def _check_image_signature(path: Path) -> None:
     is_jpeg = header.startswith(b"\xff\xd8\xff")
     is_png = header.startswith(b"\x89PNG\r\n\x1a\n")
     if path.suffix.lower() in {".jpg", ".jpeg"} and not is_jpeg:
-        raise DatasetError(
-            f"File has a JPEG extension but not a JPEG signature: {path}"
-        )
+        raise DatasetError(f"File has a JPEG extension but not a JPEG signature: {path}")
     if path.suffix.lower() == ".png" and not is_png:
         raise DatasetError(f"File has a PNG extension but not a PNG signature: {path}")
 
@@ -93,14 +91,8 @@ def parse_s3_url(value: str) -> tuple[str, str]:
 
 def validate_destination_path(value: str) -> PurePosixPath:
     path = PurePosixPath(value)
-    if (
-        path.is_absolute()
-        or not path.parts
-        or any(part in {"", ".", ".."} for part in path.parts)
-    ):
-        raise ValueError(
-            "--destination-path must be a non-empty relative path without '..'"
-        )
+    if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+        raise ValueError("--destination-path must be a non-empty relative path without '..'")
     return path
 
 
@@ -123,9 +115,7 @@ def upload_dataset(entries: list[ImageEntry], remote_root: str) -> None:
 
     bucket, prefix = parse_s3_url(remote_root)
     # Leave unset when absent so boto3 resolves the region from its own configuration chain.
-    region = (
-        os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or None
-    )
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or None
     client = boto3.client(
         "s3",
         region_name=region,
@@ -148,9 +138,7 @@ def upload_dataset(entries: list[ImageEntry], remote_root: str) -> None:
 
     for entry in entries:
         key = "/".join(
-            part
-            for part in (prefix.rstrip("/"), entry.relative_path.as_posix())
-            if part
+            part for part in (prefix.rstrip("/"), entry.relative_path.as_posix()) if part
         )
         LOGGER.info("Uploading %s", entry.relative_path)
         client.upload_file(str(entry.local_path), bucket, key)
@@ -170,9 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--destination-path",
         help="Relative path appended to UPLOAD_DESTINATION. Required unless --validate-only.",
     )
-    parser.add_argument(
-        "--validate-only", action="store_true", help="Validate without uploading."
-    )
+    parser.add_argument("--validate-only", action="store_true", help="Validate without uploading.")
     parser.add_argument(
         "--skip-content-check",
         action="store_true",
@@ -182,21 +168,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    logging.basicConfig(
-        stream=sys.stderr, level=logging.INFO, format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s: %(message)s")
     args = build_parser().parse_args()
     try:
-        entries = collect_images(
-            Path(args.path), verify_content=not args.skip_content_check
-        )
+        entries = collect_images(Path(args.path), verify_content=not args.skip_content_check)
         LOGGER.info("Validated %d image(s).", len(entries))
         if args.validate_only:
             return 0
         if not args.destination_path:
-            raise ValueError(
-                "--destination-path is required unless --validate-only is used"
-            )
+            raise ValueError("--destination-path is required unless --validate-only is used")
         base = os.environ.get("UPLOAD_DESTINATION", "").strip()
         if not base:
             raise ValueError("UPLOAD_DESTINATION is required for upload")

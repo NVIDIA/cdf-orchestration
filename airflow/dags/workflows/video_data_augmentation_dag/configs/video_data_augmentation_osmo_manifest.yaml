@@ -8,9 +8,10 @@ deployment:
       pool_slots: 1
       operator: OsmoTaskOperator
       configuration:
-        osmo_pool: metropolis-rtx6000-01
+        osmo_pool: "{{ var.value.get('osmo_pool', '') }}"
         osmo_priority: NORMAL
         osmo_token: "{{ var.value.osmo_token }}"
+        osmo_url: "{{ var.value.get('osmo_url', '') }}"
         osmo_gpu: 1
         osmo_cpu: 11
         osmo_memory: "100Gi"
@@ -88,7 +89,7 @@ deployment:
         environment:
           UV_LINK_MODE: copy
           HF_HOME: "/tmp/hf_cache"
-          HF_HUB_OFFLINE: "1"
+          HF_CACHE_SEED_DIR: "{{ var.value.get('osmo_hf_cache_seed_dir', '') }}"
         secrets:
           MULTISTORAGECLIENT_CONFIGURATION: "{{ var.value.multistorageclient_configuration_secret }}"
           BUILD_NVIDIA_API_KEY: "{{ conn.nvcf_default.password }}"
@@ -96,5 +97,13 @@ deployment:
           VLM_API_KEY: "{{ conn.nvcf_default.password }}"
           LLM_API_KEY: "{{ conn.nvcf_default.password }}"
           COSMOS_API_KEY: "{{ conn.nvcf_default.password }}"
+          HF_TOKEN: "{{ var.value.hf_token }}"
         configuration:
-          container_command: "bash -c 'mkdir -p /tmp/hf_cache && cp -rs /mnt/amlfs-02/shared/cosmos-augmentation-hf-cache/* /tmp/hf_cache/ 2>/dev/null; exec uv run --no-sync /workspace/modules/cli.py \"$@\"' _"
+          # With osmo_hf_cache_seed_dir set, link that pre-populated Hugging Face cache into
+          # HF_HOME and run offline; otherwise download models with HF_TOKEN.
+          container_command: >-
+            bash -c 'set -e; mkdir -p "$HF_HOME";
+            if [ -n "$HF_CACHE_SEED_DIR" ]; then
+            if [ ! -d "$HF_CACHE_SEED_DIR" ]; then echo "HF cache seed directory $HF_CACHE_SEED_DIR (Airflow variable osmo_hf_cache_seed_dir) does not exist on this OSMO pool" >&2; exit 1; fi;
+            cp -rs "$HF_CACHE_SEED_DIR"/. "$HF_HOME"/; export HF_HUB_OFFLINE=1; fi;
+            exec uv run --no-sync /workspace/modules/cli.py "$@"' _

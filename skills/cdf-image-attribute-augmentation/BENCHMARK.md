@@ -9,7 +9,7 @@ Recommended for publication based on the completed evaluation evidence in this r
 ## Evaluation Metadata
 
 - Skill: `cdf-image-attribute-augmentation`
-- Evaluation date: 2026-10-20
+- Evaluation date: 2026-10-21
 - Evaluator version: `1.5.6`
 - Agents: Claude Code (`aws/anthropic/bedrock-claude-opus-4-8`), Codex (`openai/openai/gpt-5.5`)
 - Tasks: 13 evaluation tasks (11 positive, 2 negative)
@@ -35,12 +35,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 85.7% — baseline ran, but no comparable score was available; uplift unavailable | 80.2% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 76.9% → 100.0% (+23.1 points) | 61.5% → 100.0% (+38.5 points) |
-| Correctness | 26.2% → 89.2% (+63.0 points) | 24.6% → 76.9% (+52.3 points) |
-| Discoverability | 82.7% — baseline ran, but no comparable score was available; uplift unavailable | 74.6% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 39.3% → 71.3% (+32.0 points) | 34.7% → 60.7% (+26.0 points) |
-| Efficiency | 85.0% — baseline ran, but no comparable score was available; uplift unavailable | 89.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 84.1% — baseline ran, but no comparable score was available; uplift unavailable | 82.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 84.6% → 100.0% (+15.4 points) | 88.5% → 100.0% (+11.5 points) |
+| Correctness | 29.2% → 86.2% (+57.0 points) | 30.8% → 76.9% (+46.1 points) |
+| Discoverability | 79.6% — baseline ran, but no comparable score was available; uplift unavailable | 73.2% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 37.6% → 67.5% (+29.9 points) | 34.3% → 67.1% (+32.8 points) |
+| Efficiency | 87.4% — baseline ran, but no comparable score was available; uplift unavailable | 92.8% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -54,35 +54,35 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 2,184,264 | 4,679,704 | N/A | N/A | skill 13/13; base 12/13 |
-| claude-code | iaa-augmentation-only-unsupported | 68,810 | 120,815 | -52,005 | -43.05% | skill 1/1; base 1/1 |
-| claude-code | iaa-caption-only-unsupported | 69,062 | 277,206 | -208,144 | -75.09% | skill 1/1; base 1/1 |
-| claude-code | iaa-defect-routing-negative | 213,101 | N/A | N/A | N/A | skill 1/1; base 0/1 |
-| claude-code | iaa-e2e-external-positive | 69,825 | 1,899,724 | -1,829,899 | -96.32% | skill 1/1; base 1/1 |
-| claude-code | iaa-e2e-internal-positive | 150,472 | 984,349 | -833,877 | -84.71% | skill 1/1; base 1/1 |
-| claude-code | iaa-local-upload-positive | 199,493 | 185,249 | +14,244 | +7.69% | skill 1/1; base 1/1 |
-| claude-code | iaa-no-dataset-negative | 109,754 | 319,778 | -210,024 | -65.68% | skill 1/1; base 1/1 |
-| claude-code | iaa-no-secret-leak-security | 29,927 | 29,458 | +469 | +1.59% | skill 1/1; base 1/1 |
-| claude-code | iaa-partial-distribution-negative | 439,053 | 149,310 | +289,743 | +194.05% | skill 1/1; base 1/1 |
-| claude-code | iaa-platform-selection-positive | 101,441 | 89,900 | +11,541 | +12.84% | skill 1/1; base 1/1 |
-| claude-code | iaa-status-results-positive | 361,732 | 287,677 | +74,055 | +25.74% | skill 1/1; base 1/1 |
-| claude-code | iaa-variable-conditional-positive | 206,347 | 183,977 | +22,370 | +12.16% | skill 1/1; base 1/1 |
-| claude-code | iaa-vda-routing-negative | 165,247 | 152,261 | +12,986 | +8.53% | skill 1/1; base 1/1 |
-| codex | All cases | 1,738,474 | 2,485,627 | -747,153 | -30.06% | skill 13/13; base 13/13 |
-| codex | iaa-augmentation-only-unsupported | 49,272 | 46,566 | +2,706 | +5.81% | skill 1/1; base 1/1 |
-| codex | iaa-caption-only-unsupported | 208,494 | 311,820 | -103,326 | -33.14% | skill 1/1; base 1/1 |
-| codex | iaa-defect-routing-negative | 388,197 | 287,630 | +100,567 | +34.96% | skill 1/1; base 1/1 |
-| codex | iaa-e2e-external-positive | 112,755 | 83,324 | +29,431 | +35.32% | skill 1/1; base 1/1 |
-| codex | iaa-e2e-internal-positive | 112,140 | 274,974 | -162,834 | -59.22% | skill 1/1; base 1/1 |
-| codex | iaa-local-upload-positive | 180,254 | 311,878 | -131,624 | -42.20% | skill 1/1; base 1/1 |
-| codex | iaa-no-dataset-negative | 70,248 | 41,694 | +28,554 | +68.48% | skill 1/1; base 1/1 |
-| codex | iaa-no-secret-leak-security | 13,571 | 13,307 | +264 | +1.98% | skill 1/1; base 1/1 |
-| codex | iaa-partial-distribution-negative | 46,026 | 83,254 | -37,228 | -44.72% | skill 1/1; base 1/1 |
-| codex | iaa-platform-selection-positive | 96,057 | 80,269 | +15,788 | +19.67% | skill 1/1; base 1/1 |
-| codex | iaa-status-results-positive | 321,280 | 895,900 | -574,620 | -64.14% | skill 1/1; base 1/1 |
-| codex | iaa-variable-conditional-positive | 84,501 | 13,648 | +70,853 | +519.15% | skill 1/1; base 1/1 |
-| codex | iaa-vda-routing-negative | 55,679 | 41,363 | +14,316 | +34.61% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 3,922,738 | 7,165,331 | N/A | N/A | skill 26/26; base 25/26 |
+| claude-code | All cases | 2,305,332 | 5,578,939 | -3,273,607 | -58.68% | skill 13/13; base 13/13 |
+| claude-code | iaa-augmentation-only-unsupported | 108,679 | 89,777 | +18,902 | +21.05% | skill 1/1; base 1/1 |
+| claude-code | iaa-caption-only-unsupported | 113,952 | 120,586 | -6,634 | -5.50% | skill 1/1; base 1/1 |
+| claude-code | iaa-defect-routing-negative | 209,168 | 619,511 | -410,343 | -66.24% | skill 1/1; base 1/1 |
+| claude-code | iaa-e2e-external-positive | 69,695 | 188,288 | -118,593 | -62.98% | skill 1/1; base 1/1 |
+| claude-code | iaa-e2e-internal-positive | 109,131 | 1,938,484 | -1,829,353 | -94.37% | skill 1/1; base 1/1 |
+| claude-code | iaa-local-upload-positive | 243,891 | 212,309 | +31,582 | +14.88% | skill 1/1; base 1/1 |
+| claude-code | iaa-no-dataset-negative | 108,281 | 182,985 | -74,704 | -40.83% | skill 1/1; base 1/1 |
+| claude-code | iaa-no-secret-leak-security | 29,859 | 29,556 | +303 | +1.03% | skill 1/1; base 1/1 |
+| claude-code | iaa-partial-distribution-negative | 378,252 | 120,482 | +257,770 | +213.95% | skill 1/1; base 1/1 |
+| claude-code | iaa-platform-selection-positive | 69,037 | 90,563 | -21,526 | -23.77% | skill 1/1; base 1/1 |
+| claude-code | iaa-status-results-positive | 266,416 | 1,589,382 | -1,322,966 | -83.24% | skill 1/1; base 1/1 |
+| claude-code | iaa-variable-conditional-positive | 206,729 | 152,749 | +53,980 | +35.34% | skill 1/1; base 1/1 |
+| claude-code | iaa-vda-routing-negative | 392,242 | 244,267 | +147,975 | +60.58% | skill 1/1; base 1/1 |
+| codex | All cases | 2,110,764 | 2,302,701 | -191,937 | -8.34% | skill 13/13; base 13/13 |
+| codex | iaa-augmentation-only-unsupported | 29,971 | 45,976 | -16,005 | -34.81% | skill 1/1; base 1/1 |
+| codex | iaa-caption-only-unsupported | 303,305 | 99,099 | +204,206 | +206.06% | skill 1/1; base 1/1 |
+| codex | iaa-defect-routing-negative | 403,553 | 335,021 | +68,532 | +20.46% | skill 1/1; base 1/1 |
+| codex | iaa-e2e-external-positive | 89,892 | 114,107 | -24,215 | -21.22% | skill 1/1; base 1/1 |
+| codex | iaa-e2e-internal-positive | 49,344 | 498,313 | -448,969 | -90.10% | skill 1/1; base 1/1 |
+| codex | iaa-local-upload-positive | 153,268 | 101,881 | +51,387 | +50.44% | skill 1/1; base 1/1 |
+| codex | iaa-no-dataset-negative | 49,274 | 84,935 | -35,661 | -41.99% | skill 1/1; base 1/1 |
+| codex | iaa-no-secret-leak-security | 13,446 | 13,323 | +123 | +0.92% | skill 1/1; base 1/1 |
+| codex | iaa-partial-distribution-negative | 72,698 | 58,150 | +14,548 | +25.02% | skill 1/1; base 1/1 |
+| codex | iaa-platform-selection-positive | 72,125 | 59,700 | +12,425 | +20.81% | skill 1/1; base 1/1 |
+| codex | iaa-status-results-positive | 613,762 | 740,466 | -126,704 | -17.11% | skill 1/1; base 1/1 |
+| codex | iaa-variable-conditional-positive | 145,180 | 13,629 | +131,551 | +965.23% | skill 1/1; base 1/1 |
+| codex | iaa-vda-routing-negative | 114,946 | 138,101 | -23,155 | -16.77% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 4,416,096 | 7,881,640 | -3,465,544 | -43.97% | skill 26/26; base 26/26 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. N/A means the relevant trajectory counters were not available; coverage is never estimated.
 
@@ -90,7 +90,7 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 
 | Tier | Purpose | Status | Evidence |
 |---|---|---|---|
-| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 43 finding(s) |
+| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 36 finding(s) |
 | Tier 2 | Semantic deduplication | **PASSED** | 2 validator(s); 0 finding(s) |
 | Tier 3 | Live agent evaluation | **PASS** | 2 agent(s); 13 task(s) |
 
@@ -104,7 +104,7 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 - **MEDIUM** QUALITY/quality_efficiency: Large skill (6401 tokens, recommended max <5000). Per agentskills.io, SKILL.md should be concise (~500 lines) — large skill bodies increase token cost after invocation; long or unfocused top-level descriptions can degrade agent routing accuracy (`skills/cdf-image-attribute-augmentation/SKILL.md`)
 - **MEDIUM** QUALITY/quality_efficiency: Deeply nested references in airflow-direct-api.md (`skills/cdf-image-attribute-augmentation/SKILL.md`)
 - **MEDIUM** SCHEMA/frontmatter_field_placement: Root field 'version' is ignored; use 'metadata.version' (`skills/cdf-image-attribute-augmentation/SKILL.md`)
-- 38 additional finding(s) are available in the full evaluation artifacts.
+- 31 additional finding(s) are available in the full evaluation artifacts.
 
 </details>
 

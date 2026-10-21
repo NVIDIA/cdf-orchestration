@@ -9,7 +9,7 @@ Recommended for publication based on the completed evaluation evidence in this r
 ## Evaluation Metadata
 
 - Skill: `cdf-orchestration-preflight`
-- Evaluation date: 2026-10-20
+- Evaluation date: 2026-10-21
 - Evaluator version: `1.5.6`
 - Agents: Claude Code (`aws/anthropic/bedrock-claude-opus-4-8`), Codex (`openai/openai/gpt-5.5`)
 - Tasks: 14 evaluation tasks (10 positive, 4 negative)
@@ -35,12 +35,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 85.8% — baseline ran, but no comparable score was available; uplift unavailable | 81.7% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 85.7% → 100.0% (+14.3 points) | 82.1% → 78.6% (-3.5 points) |
-| Correctness | 12.9% → 75.7% (+62.8 points) | 32.9% → 82.9% (+50.0 points) |
-| Discoverability | 96.5% — baseline ran, but no comparable score was available; uplift unavailable | 89.0% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 39.5% → 66.4% (+26.9 points) | 39.4% → 70.9% (+31.5 points) |
-| Efficiency | 90.5% — baseline ran, but no comparable score was available; uplift unavailable | 87.4% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 86.8% — baseline ran, but no comparable score was available; uplift unavailable | 79.1% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 78.6% → 96.4% (+17.8 points) | 67.9% → 89.3% (+21.4 points) |
+| Correctness | 12.9% → 80.0% (+67.1 points) | 25.7% → 68.6% (+42.9 points) |
+| Discoverability | 99.0% — baseline ran, but no comparable score was available; uplift unavailable | 86.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 36.1% → 68.8% (+32.7 points) | 36.8% → 65.2% (+28.4 points) |
+| Efficiency | 89.7% — baseline ran, but no comparable score was available; uplift unavailable | 86.5% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -54,37 +54,37 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 5,181,784 | 3,050,160 | +2,131,624 | +69.89% | skill 14/14; base 14/14 |
-| claude-code | audit-before-remediation | 386,094 | 299,247 | +86,847 | +29.02% | skill 1/1; base 1/1 |
-| claude-code | av-ffmpeg-sidecar-missing | 337,718 | 221,866 | +115,852 | +52.22% | skill 1/1; base 1/1 |
-| claude-code | live-unprofiled-dag | 296,440 | 152,740 | +143,700 | +94.08% | skill 1/1; base 1/1 |
-| claude-code | managed-cluster-no-nfs | 242,960 | 258,670 | -15,710 | -6.07% | skill 1/1; base 1/1 |
-| claude-code | missing-kubeconfig | 238,891 | 121,615 | +117,276 | +96.43% | skill 1/1; base 1/1 |
-| claude-code | negative-author-custom-dag | 627,686 | 288,205 | +339,481 | +117.79% | skill 1/1; base 1/1 |
-| claude-code | negative-controller-deploy | 421,633 | 284,327 | +137,306 | +48.29% | skill 1/1; base 1/1 |
-| claude-code | negative-trigger-defect-run | 269,013 | 121,308 | +147,705 | +121.76% | skill 1/1; base 1/1 |
-| claude-code | negative-workflow-run | 222,244 | 258,422 | -36,178 | -14.00% | skill 1/1; base 1/1 |
-| claude-code | osmo-not-proven | 435,974 | 150,810 | +285,164 | +189.09% | skill 1/1; base 1/1 |
-| claude-code | partial-one-gpu | 179,583 | 182,008 | -2,425 | -1.33% | skill 1/1; base 1/1 |
-| claude-code | prebuilt-controller-image | 612,035 | 218,381 | +393,654 | +180.26% | skill 1/1; base 1/1 |
-| claude-code | quick-start-boundary | 429,000 | 243,370 | +185,630 | +76.27% | skill 1/1; base 1/1 |
-| claude-code | self-managed-nfs | 482,513 | 249,191 | +233,322 | +93.63% | skill 1/1; base 1/1 |
-| codex | All cases | 3,881,599 | 3,567,859 | +313,740 | +8.79% | skill 14/14; base 14/14 |
-| codex | audit-before-remediation | 183,469 | 151,776 | +31,693 | +20.88% | skill 1/1; base 1/1 |
-| codex | av-ffmpeg-sidecar-missing | 236,394 | 174,811 | +61,583 | +35.23% | skill 1/1; base 1/1 |
-| codex | live-unprofiled-dag | 245,139 | 55,925 | +189,214 | +338.34% | skill 1/1; base 1/1 |
-| codex | managed-cluster-no-nfs | 465,909 | 246,435 | +219,474 | +89.06% | skill 1/1; base 1/1 |
-| codex | missing-kubeconfig | 104,242 | 80,764 | +23,478 | +29.07% | skill 1/1; base 1/1 |
-| codex | negative-author-custom-dag | 452,147 | 198,193 | +253,954 | +128.13% | skill 1/1; base 1/1 |
-| codex | negative-controller-deploy | 544,963 | 1,198,400 | -653,437 | -54.53% | skill 1/1; base 1/1 |
-| codex | negative-trigger-defect-run | 693,388 | 437,361 | +256,027 | +58.54% | skill 1/1; base 1/1 |
-| codex | negative-workflow-run | 232,087 | 213,296 | +18,791 | +8.81% | skill 1/1; base 1/1 |
-| codex | osmo-not-proven | 130,296 | 163,729 | -33,433 | -20.42% | skill 1/1; base 1/1 |
-| codex | partial-one-gpu | 162,100 | 135,583 | +26,517 | +19.56% | skill 1/1; base 1/1 |
-| codex | prebuilt-controller-image | 156,896 | 310,663 | -153,767 | -49.50% | skill 1/1; base 1/1 |
-| codex | quick-start-boundary | 148,541 | 99,607 | +48,934 | +49.13% | skill 1/1; base 1/1 |
-| codex | self-managed-nfs | 126,028 | 101,316 | +24,712 | +24.39% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 9,063,383 | 6,618,019 | +2,445,364 | +36.95% | skill 28/28; base 28/28 |
+| claude-code | All cases | 4,910,301 | 3,771,982 | +1,138,319 | +30.18% | skill 14/14; base 14/14 |
+| claude-code | audit-before-remediation | 429,948 | 418,695 | +11,253 | +2.69% | skill 1/1; base 1/1 |
+| claude-code | av-ffmpeg-sidecar-missing | 558,550 | 153,637 | +404,913 | +263.55% | skill 1/1; base 1/1 |
+| claude-code | live-unprofiled-dag | 100,039 | 181,195 | -81,156 | -44.79% | skill 1/1; base 1/1 |
+| claude-code | managed-cluster-no-nfs | 330,460 | 395,472 | -65,012 | -16.44% | skill 1/1; base 1/1 |
+| claude-code | missing-kubeconfig | 313,561 | 92,412 | +221,149 | +239.31% | skill 1/1; base 1/1 |
+| claude-code | negative-author-custom-dag | 673,371 | 218,461 | +454,910 | +208.23% | skill 1/1; base 1/1 |
+| claude-code | negative-controller-deploy | 252,517 | 569,000 | -316,483 | -55.62% | skill 1/1; base 1/1 |
+| claude-code | negative-trigger-defect-run | 367,770 | 184,501 | +183,269 | +99.33% | skill 1/1; base 1/1 |
+| claude-code | negative-workflow-run | 330,531 | 323,045 | +7,486 | +2.32% | skill 1/1; base 1/1 |
+| claude-code | osmo-not-proven | 330,719 | 153,187 | +177,532 | +115.89% | skill 1/1; base 1/1 |
+| claude-code | partial-one-gpu | 140,617 | 151,573 | -10,956 | -7.23% | skill 1/1; base 1/1 |
+| claude-code | prebuilt-controller-image | 388,045 | 498,769 | -110,724 | -22.20% | skill 1/1; base 1/1 |
+| claude-code | quick-start-boundary | 363,060 | 181,769 | +181,291 | +99.74% | skill 1/1; base 1/1 |
+| claude-code | self-managed-nfs | 331,113 | 250,266 | +80,847 | +32.30% | skill 1/1; base 1/1 |
+| codex | All cases | 4,124,743 | 3,714,323 | +410,420 | +11.05% | skill 14/14; base 14/14 |
+| codex | audit-before-remediation | 211,148 | 198,388 | +12,760 | +6.43% | skill 1/1; base 1/1 |
+| codex | av-ffmpeg-sidecar-missing | 267,741 | 266,473 | +1,268 | +0.48% | skill 1/1; base 1/1 |
+| codex | live-unprofiled-dag | 331,552 | 83,750 | +247,802 | +295.88% | skill 1/1; base 1/1 |
+| codex | managed-cluster-no-nfs | 268,015 | 186,410 | +81,605 | +43.78% | skill 1/1; base 1/1 |
+| codex | missing-kubeconfig | 83,231 | 82,532 | +699 | +0.85% | skill 1/1; base 1/1 |
+| codex | negative-author-custom-dag | 516,388 | 197,590 | +318,798 | +161.34% | skill 1/1; base 1/1 |
+| codex | negative-controller-deploy | 204,399 | 574,432 | -370,033 | -64.42% | skill 1/1; base 1/1 |
+| codex | negative-trigger-defect-run | 596,832 | 1,017,507 | -420,675 | -41.34% | skill 1/1; base 1/1 |
+| codex | negative-workflow-run | 472,147 | 324,561 | +147,586 | +45.47% | skill 1/1; base 1/1 |
+| codex | osmo-not-proven | 287,581 | 175,458 | +112,123 | +63.90% | skill 1/1; base 1/1 |
+| codex | partial-one-gpu | 177,262 | 156,829 | +20,433 | +13.03% | skill 1/1; base 1/1 |
+| codex | prebuilt-controller-image | 100,592 | 187,632 | -87,040 | -46.39% | skill 1/1; base 1/1 |
+| codex | quick-start-boundary | 173,803 | 115,097 | +58,706 | +51.01% | skill 1/1; base 1/1 |
+| codex | self-managed-nfs | 434,052 | 147,664 | +286,388 | +193.95% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 9,035,044 | 7,486,305 | +1,548,739 | +20.69% | skill 28/28; base 28/28 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. N/A means the relevant trajectory counters were not available; coverage is never estimated.
 
@@ -92,7 +92,7 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 
 | Tier | Purpose | Status | Evidence |
 |---|---|---|---|
-| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 81 finding(s) |
+| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 50 finding(s) |
 | Tier 2 | Semantic deduplication | **PASSED** | 2 validator(s); 0 finding(s) |
 | Tier 3 | Live agent evaluation | **PASS** | 2 agent(s); 14 task(s) |
 
@@ -106,7 +106,7 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 - **MEDIUM** QUALITY/quality_correctness: SKILL_SPEC recommended field missing: 'metadata.author' (`skills/cdf-orchestration-preflight/SKILL.md`)
 - **MEDIUM** QUALITY/quality_efficiency: Deeply nested references in bootstrap.md (`skills/cdf-orchestration-preflight/SKILL.md`)
 - **MEDIUM** SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cdf-orchestration-preflight/SKILL.md`)
-- 76 additional finding(s) are available in the full evaluation artifacts.
+- 45 additional finding(s) are available in the full evaluation artifacts.
 
 </details>
 

@@ -9,7 +9,7 @@ Recommended for publication based on the completed evaluation evidence in this r
 ## Evaluation Metadata
 
 - Skill: `cdf-video-data-augmentation`
-- Evaluation date: 2026-10-20
+- Evaluation date: 2026-10-21
 - Evaluator version: `1.5.6`
 - Agents: Claude Code (`aws/anthropic/bedrock-claude-opus-4-8`), Codex (`openai/openai/gpt-5.5`)
 - Tasks: 21 evaluation tasks (16 positive, 5 negative)
@@ -35,12 +35,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 93.0% — baseline ran, but no comparable score was available; uplift unavailable | 89.7% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 92.9% → 100.0% (+7.1 points) | 85.7% → 97.6% (+11.9 points) |
-| Correctness | 37.1% → 93.3% (+56.2 points) | 45.7% → 85.7% (+40.0 points) |
-| Discoverability | 93.3% — baseline ran, but no comparable score was available; uplift unavailable | 89.1% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 36.0% → 88.3% (+52.3 points) | 37.4% → 81.7% (+44.3 points) |
-| Efficiency | 90.0% — baseline ran, but no comparable score was available; uplift unavailable | 94.6% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 92.1% — baseline ran, but no comparable score was available; uplift unavailable | 86.9% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 95.2% → 100.0% (+4.8 points) | 83.3% → 90.5% (+7.2 points) |
+| Correctness | 36.2% → 90.5% (+54.3 points) | 49.5% → 82.9% (+33.4 points) |
+| Discoverability | 89.4% — baseline ran, but no comparable score was available; uplift unavailable | 88.1% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 35.6% → 87.6% (+52.0 points) | 39.96% → 79.04% (+39.08 points) |
+| Efficiency | 93.0% — baseline ran, but no comparable score was available; uplift unavailable | 93.9% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -54,51 +54,51 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 3,561,219 | 6,776,406 | -3,215,187 | -47.45% | skill 21/21; base 21/21 |
-| claude-code | vda-augmentation-component-routing | 217,062 | 152,088 | +64,974 | +42.72% | skill 1/1; base 1/1 |
-| claude-code | vda-cleanup-does-not-mask-failure | 104,787 | 91,333 | +13,454 | +14.73% | skill 1/1; base 1/1 |
-| claude-code | vda-component-reference-inaccessible | 68,408 | 122,879 | -54,471 | -44.33% | skill 1/1; base 1/1 |
-| claude-code | vda-custom-dag-routing | 30,374 | 215,220 | -184,846 | -85.89% | skill 1/1; base 1/1 |
-| claude-code | vda-event-generation-routing-negative | 255,940 | 123,617 | +132,323 | +107.04% | skill 1/1; base 1/1 |
-| claude-code | vda-full-workflow-component-routing | 69,995 | 216,201 | -146,206 | -67.63% | skill 1/1; base 1/1 |
-| claude-code | vda-generation-only-unsupported | 467,296 | 246,013 | +221,283 | +89.95% | skill 1/1; base 1/1 |
-| claude-code | vda-ignored-fields-negative | 147,213 | 186,394 | -39,181 | -21.02% | skill 1/1; base 1/1 |
-| claude-code | vda-labeling-component-routing | 29,956 | 29,712 | +244 | +0.82% | skill 1/1; base 1/1 |
-| claude-code | vda-minimum-compute-all-checkers-positive | 66,342 | 246,112 | -179,770 | -73.04% | skill 1/1; base 1/1 |
-| claude-code | vda-minimum-compute-no-plausibility-positive | 65,725 | 60,182 | +5,543 | +9.21% | skill 1/1; base 1/1 |
-| claude-code | vda-missing-dag-no-deploy | 392,583 | 251,642 | +140,941 | +56.01% | skill 1/1; base 1/1 |
-| claude-code | vda-no-input-negative | 102,169 | 254,384 | -152,215 | -59.84% | skill 1/1; base 1/1 |
-| claude-code | vda-no-secret-leak-security | 29,642 | 29,431 | +211 | +0.72% | skill 1/1; base 1/1 |
-| claude-code | vda-orchestration-setup-routing | 170,417 | 217,938 | -47,521 | -21.80% | skill 1/1; base 1/1 |
-| claude-code | vda-osmo-internal-services-negative | 151,845 | 309,324 | -157,479 | -50.91% | skill 1/1; base 1/1 |
-| claude-code | vda-payload-layer-routing | 98,257 | 29,997 | +68,260 | +227.56% | skill 1/1; base 1/1 |
-| claude-code | vda-render-external-k8s-positive | 388,791 | 461,235 | -72,444 | -15.71% | skill 1/1; base 1/1 |
-| claude-code | vda-render-internal-k8s-positive | 295,097 | 600,423 | -305,326 | -50.85% | skill 1/1; base 1/1 |
-| claude-code | vda-render-osmo-positive | 303,378 | 544,310 | -240,932 | -44.26% | skill 1/1; base 1/1 |
-| claude-code | vda-retrieval-routing-negative | 105,942 | 2,387,971 | -2,282,029 | -95.56% | skill 1/1; base 1/1 |
-| codex | All cases | 2,256,324 | 5,641,776 | -3,385,452 | -60.01% | skill 21/21; base 21/21 |
-| codex | vda-augmentation-component-routing | 13,983 | 24,556 | -10,573 | -43.06% | skill 1/1; base 1/1 |
-| codex | vda-cleanup-does-not-mask-failure | 46,703 | 84,516 | -37,813 | -44.74% | skill 1/1; base 1/1 |
-| codex | vda-component-reference-inaccessible | 49,646 | 57,033 | -7,387 | -12.95% | skill 1/1; base 1/1 |
-| codex | vda-custom-dag-routing | 29,916 | 13,554 | +16,362 | +120.72% | skill 1/1; base 1/1 |
-| codex | vda-event-generation-routing-negative | 64,621 | 13,722 | +50,899 | +370.93% | skill 1/1; base 1/1 |
-| codex | vda-full-workflow-component-routing | 218,944 | 14,624 | +204,320 | +1397.16% | skill 1/1; base 1/1 |
-| codex | vda-generation-only-unsupported | 240,379 | 112,962 | +127,417 | +112.80% | skill 1/1; base 1/1 |
-| codex | vda-ignored-fields-negative | 48,380 | 69,045 | -20,665 | -29.93% | skill 1/1; base 1/1 |
-| codex | vda-labeling-component-routing | 13,589 | 13,544 | +45 | +0.33% | skill 1/1; base 1/1 |
-| codex | vda-minimum-compute-all-checkers-positive | 70,079 | 629,588 | -559,509 | -88.87% | skill 1/1; base 1/1 |
-| codex | vda-minimum-compute-no-plausibility-positive | 47,392 | 46,050 | +1,342 | +2.91% | skill 1/1; base 1/1 |
-| codex | vda-missing-dag-no-deploy | 640,536 | 2,372,694 | -1,732,158 | -73.00% | skill 1/1; base 1/1 |
-| codex | vda-no-input-negative | 47,794 | 68,969 | -21,175 | -30.70% | skill 1/1; base 1/1 |
-| codex | vda-no-secret-leak-security | 29,942 | 13,432 | +16,510 | +122.92% | skill 1/1; base 1/1 |
-| codex | vda-orchestration-setup-routing | 46,957 | 61,317 | -14,360 | -23.42% | skill 1/1; base 1/1 |
-| codex | vda-osmo-internal-services-negative | 204,614 | 1,180,654 | -976,040 | -82.67% | skill 1/1; base 1/1 |
-| codex | vda-payload-layer-routing | 29,783 | 84,489 | -54,706 | -64.75% | skill 1/1; base 1/1 |
-| codex | vda-render-external-k8s-positive | 87,104 | 169,145 | -82,041 | -48.50% | skill 1/1; base 1/1 |
-| codex | vda-render-internal-k8s-positive | 112,048 | 117,360 | -5,312 | -4.53% | skill 1/1; base 1/1 |
-| codex | vda-render-osmo-positive | 86,885 | 158,006 | -71,121 | -45.01% | skill 1/1; base 1/1 |
-| codex | vda-retrieval-routing-negative | 127,029 | 336,516 | -209,487 | -62.25% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 5,817,543 | 12,418,182 | -6,600,639 | -53.15% | skill 42/42; base 42/42 |
+| claude-code | All cases | 3,585,292 | 6,568,628 | -2,983,336 | -45.42% | skill 21/21; base 21/21 |
+| claude-code | vda-augmentation-component-routing | 30,023 | 154,119 | -124,096 | -80.52% | skill 1/1; base 1/1 |
+| claude-code | vda-cleanup-does-not-mask-failure | 103,796 | 180,995 | -77,199 | -42.65% | skill 1/1; base 1/1 |
+| claude-code | vda-component-reference-inaccessible | 69,023 | 152,805 | -83,782 | -54.83% | skill 1/1; base 1/1 |
+| claude-code | vda-custom-dag-routing | 30,220 | 181,710 | -151,490 | -83.37% | skill 1/1; base 1/1 |
+| claude-code | vda-event-generation-routing-negative | 517,560 | 1,750,906 | -1,233,346 | -70.44% | skill 1/1; base 1/1 |
+| claude-code | vda-full-workflow-component-routing | 69,023 | 316,661 | -247,638 | -78.20% | skill 1/1; base 1/1 |
+| claude-code | vda-generation-only-unsupported | 350,534 | 222,162 | +128,372 | +57.78% | skill 1/1; base 1/1 |
+| claude-code | vda-ignored-fields-negative | 105,974 | 153,496 | -47,522 | -30.96% | skill 1/1; base 1/1 |
+| claude-code | vda-labeling-component-routing | 29,737 | 29,453 | +284 | +0.96% | skill 1/1; base 1/1 |
+| claude-code | vda-minimum-compute-all-checkers-positive | 66,612 | 151,974 | -85,362 | -56.17% | skill 1/1; base 1/1 |
+| claude-code | vda-minimum-compute-no-plausibility-positive | 66,004 | 91,324 | -25,320 | -27.73% | skill 1/1; base 1/1 |
+| claude-code | vda-missing-dag-no-deploy | 315,769 | 254,332 | +61,437 | +24.16% | skill 1/1; base 1/1 |
+| claude-code | vda-no-input-negative | 184,590 | 184,430 | +160 | +0.09% | skill 1/1; base 1/1 |
+| claude-code | vda-no-secret-leak-security | 29,577 | 29,261 | +316 | +1.08% | skill 1/1; base 1/1 |
+| claude-code | vda-orchestration-setup-routing | 194,392 | 192,270 | +2,122 | +1.10% | skill 1/1; base 1/1 |
+| claude-code | vda-osmo-internal-services-negative | 146,152 | 469,263 | -323,111 | -68.85% | skill 1/1; base 1/1 |
+| claude-code | vda-payload-layer-routing | 98,290 | 30,080 | +68,210 | +226.76% | skill 1/1; base 1/1 |
+| claude-code | vda-render-external-k8s-positive | 303,345 | 579,643 | -276,298 | -47.67% | skill 1/1; base 1/1 |
+| claude-code | vda-render-internal-k8s-positive | 256,853 | 444,919 | -188,066 | -42.27% | skill 1/1; base 1/1 |
+| claude-code | vda-render-osmo-positive | 302,558 | 442,965 | -140,407 | -31.70% | skill 1/1; base 1/1 |
+| claude-code | vda-retrieval-routing-negative | 315,260 | 555,860 | -240,600 | -43.28% | skill 1/1; base 1/1 |
+| codex | All cases | 3,825,155 | 3,313,506 | +511,649 | +15.44% | skill 21/21; base 21/21 |
+| codex | vda-augmentation-component-routing | 27,399 | 18,504 | +8,895 | +48.07% | skill 1/1; base 1/1 |
+| codex | vda-cleanup-does-not-mask-failure | 47,572 | 83,900 | -36,328 | -43.30% | skill 1/1; base 1/1 |
+| codex | vda-component-reference-inaccessible | 69,341 | 53,053 | +16,288 | +30.70% | skill 1/1; base 1/1 |
+| codex | vda-custom-dag-routing | 30,074 | 42,144 | -12,070 | -28.64% | skill 1/1; base 1/1 |
+| codex | vda-event-generation-routing-negative | 27,970 | 13,861 | +14,109 | +101.79% | skill 1/1; base 1/1 |
+| codex | vda-full-workflow-component-routing | 396,912 | 14,470 | +382,442 | +2643.00% | skill 1/1; base 1/1 |
+| codex | vda-generation-only-unsupported | 1,654,496 | 112,659 | +1,541,837 | +1368.59% | skill 1/1; base 1/1 |
+| codex | vda-ignored-fields-negative | 47,923 | 55,263 | -7,340 | -13.28% | skill 1/1; base 1/1 |
+| codex | vda-labeling-component-routing | 13,649 | 13,499 | +150 | +1.11% | skill 1/1; base 1/1 |
+| codex | vda-minimum-compute-all-checkers-positive | 108,135 | 745,037 | -636,902 | -85.49% | skill 1/1; base 1/1 |
+| codex | vda-minimum-compute-no-plausibility-positive | 65,149 | 94,853 | -29,704 | -31.32% | skill 1/1; base 1/1 |
+| codex | vda-missing-dag-no-deploy | 544,626 | 542,343 | +2,283 | +0.42% | skill 1/1; base 1/1 |
+| codex | vda-no-input-negative | 49,393 | 69,276 | -19,883 | -28.70% | skill 1/1; base 1/1 |
+| codex | vda-no-secret-leak-security | 29,788 | 13,463 | +16,325 | +121.26% | skill 1/1; base 1/1 |
+| codex | vda-orchestration-setup-routing | 46,603 | 52,990 | -6,387 | -12.05% | skill 1/1; base 1/1 |
+| codex | vda-osmo-internal-services-negative | 164,978 | 423,481 | -258,503 | -61.04% | skill 1/1; base 1/1 |
+| codex | vda-payload-layer-routing | 29,850 | 84,998 | -55,148 | -64.88% | skill 1/1; base 1/1 |
+| codex | vda-render-external-k8s-positive | 106,435 | 101,217 | +5,218 | +5.16% | skill 1/1; base 1/1 |
+| codex | vda-render-internal-k8s-positive | 92,537 | 146,475 | -53,938 | -36.82% | skill 1/1; base 1/1 |
+| codex | vda-render-osmo-positive | 86,374 | 514,064 | -427,690 | -83.20% | skill 1/1; base 1/1 |
+| codex | vda-retrieval-routing-negative | 185,951 | 117,956 | +67,995 | +57.64% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 7,410,447 | 9,882,134 | -2,471,687 | -25.01% | skill 42/42; base 42/42 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. N/A means the relevant trajectory counters were not available; coverage is never estimated.
 

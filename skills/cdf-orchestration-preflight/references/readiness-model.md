@@ -81,7 +81,8 @@ checks binding only; the workflow's startup check verifies the claim holds `ffmp
 an H.264 decoder.
 
 External modes require real endpoints reachable from the task network. OSMO modes additionally
-require the OSMO token, matching Airflow pool, and external inference/evaluator endpoints. The
+require the OSMO token, URL and compute pool settings, matching Airflow pool, and external
+inference/evaluator endpoints. The
 generic audit cannot prove payload-specific endpoints, so those modes remain `UNVERIFIED` until an
 endpoint-aware check supplies that evidence.
 

@@ -33,9 +33,7 @@ def _check_video_signature(path: Path) -> None:
     suffix = path.suffix.lower()
     if suffix in {".mp4", ".mov"} and header[4:8] != b"ftyp":
         raise DatasetError(f"File does not have an ISO BMFF video signature: {path}")
-    if suffix == ".avi" and not (
-        header.startswith(b"RIFF") and header[8:12] == b"AVI "
-    ):
+    if suffix == ".avi" and not (header.startswith(b"RIFF") and header[8:12] == b"AVI "):
         raise DatasetError(f"File does not have an AVI signature: {path}")
     if suffix in {".mkv", ".webm"} and not header.startswith(b"\x1aE\xdf\xa3"):
         raise DatasetError(f"File does not have an EBML video signature: {path}")
@@ -47,9 +45,7 @@ def collect_videos(root: Path, *, verify_content: bool = True) -> list[VideoEntr
     if root.is_file():
         candidates = [root]
     elif root.is_dir():
-        candidates = sorted(
-            path for path in root.iterdir() if not path.name.startswith(".")
-        )
+        candidates = sorted(path for path in root.iterdir() if not path.name.startswith("."))
     else:
         raise DatasetError(f"Input path is not a file or directory: {root}")
 
@@ -81,14 +77,8 @@ def parse_s3_url(value: str) -> tuple[str, str]:
 
 def validate_destination_path(value: str) -> PurePosixPath:
     path = PurePosixPath(value)
-    if (
-        path.is_absolute()
-        or not path.parts
-        or any(part in {"", ".", ".."} for part in path.parts)
-    ):
-        raise ValueError(
-            "--destination-path must be a non-empty relative path without '..'"
-        )
+    if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+        raise ValueError("--destination-path must be a non-empty relative path without '..'")
     return path
 
 
@@ -122,9 +112,7 @@ def upload_dataset(entries: list[VideoEntry], remote_root: str) -> None:
     )
     for entry in entries:
         key = "/".join(
-            part
-            for part in (prefix.rstrip("/"), entry.relative_path.as_posix())
-            if part
+            part for part in (prefix.rstrip("/"), entry.relative_path.as_posix()) if part
         )
         LOGGER.info("Uploading %s", entry.relative_path)
         client.upload_file(str(entry.local_path), bucket, key)
@@ -142,21 +130,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    logging.basicConfig(
-        stream=sys.stderr, level=logging.INFO, format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s: %(message)s")
     args = build_parser().parse_args()
     try:
-        entries = collect_videos(
-            Path(args.path), verify_content=not args.skip_content_check
-        )
+        entries = collect_videos(Path(args.path), verify_content=not args.skip_content_check)
         LOGGER.info("Validated %d video(s).", len(entries))
         if args.validate_only:
             return 0
         if not args.destination_path:
-            raise ValueError(
-                "--destination-path is required unless --validate-only is used"
-            )
+            raise ValueError("--destination-path is required unless --validate-only is used")
         base = os.environ.get("UPLOAD_DESTINATION", "").strip()
         if not base:
             raise ValueError("UPLOAD_DESTINATION is required for upload")

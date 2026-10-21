@@ -1,5 +1,5 @@
 ## Description: <br>
-Run the CDF Orchestration Image Attribute Augmentation DAG on Kubernetes for person-crop clothing augmentation, attribute search, and augmented dataset generation. <br>
+Run the CDF Orchestration Image Attribute Augmentation DAG on Kubernetes - person-crop clothing augmentation, attribute search, and augmented dataset generation. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -9,14 +9,14 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 CC-BY-4.0 AND Apache-2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to prepare person-crop inputs, build and validate payloads, run readiness checks, trigger and monitor the Image Attribute Augmentation DAG, and retrieve and summarize results. The DAG generates controlled clothing and attribute variations of person-crop datasets for physical AI and person re-identification training. <br>
+Developers and engineers use this skill to configure, trigger, and monitor the Image Attribute Augmentation DAG on a CDF Orchestration Airflow/Kubernetes deployment, generating augmented person-attribute datasets (clothing variations, attribute search, and captions) and retrieving the results. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
 **Requires API Key or External Credential:** [Yes] <br>
-**Credential Type(s):** [API key, Cloud Credentials, Other [Kubernetes cluster credential file], Other [Basic auth]] <br>
+**Credential Type(s):** [API key, Cloud Credentials, Other [cluster credential file]] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -30,13 +30,13 @@ Mitigation: Review and scan skill before deployment. <br>
 - [outputs.md](references/outputs.md) <br>
 - [troubleshooting.md](references/troubleshooting.md) <br>
 - [airflow-direct-api.md](references/airflow-direct-api.md) <br>
-- [cdf-augmentation skill (pinned component documentation)](https://github.com/NVIDIA/cdf-augmentation/tree/73c861c43a4952b6060c87265bf39f4abc48199a/skills/cdf-augmentation) <br>
-- [cdf-auto-labeling skill (pinned component documentation)](https://github.com/NVIDIA/cdf-auto-labeling/tree/6c75c76c52a6c76c3866a38d30885e11123b0981/skills/cdf-auto-labeling) <br>
+- [cdf-augmentation skill](https://github.com/NVIDIA/cdf-augmentation/tree/73c861c43a4952b6060c87265bf39f4abc48199a/skills/cdf-augmentation) <br>
+- [cdf-auto-labeling skill](https://github.com/NVIDIA/cdf-auto-labeling/tree/6c75c76c52a6c76c3866a38d30885e11123b0981/skills/cdf-auto-labeling) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, API Calls, Configuration instructions, Analysis, Files] <br>
-**Output Format:** [Markdown with inline bash code blocks and JSON payloads] <br>
+**Output Type(s):** [Shell commands, API Calls, Analysis, Files] <br>
+**Output Format:** [Markdown with inline bash code blocks and rendered JSON payloads] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -47,36 +47,36 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-13 evaluation tasks (11 positive, 2 negative), one attempt per task, each run in an isolated sandbox pod. <br>
+13 evaluation tasks (11 positive, 2 negative), 1 attempt per task, each run in its own isolated k8s-sandbox pod. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
-- Security: Whether the skill avoids unsafe operations, secret leakage, and unauthorized access. <br>
-- Correctness: Final-answer correctness against the reference answer. <br>
-- Discoverability: Whether the right skill was loaded when needed. <br>
-- Effectiveness: Whether the skill helped complete the task: goal completion and expected workflow adherence. <br>
-- Efficiency: Whether the agent avoided wasted tool calls and token usage. <br>
+- Security: Whether the skill is safe to use — avoids unsafe operations, secret leakage, and unauthorized access. <br>
+- Correctness: Whether the final answer is correct against the reference answer. <br>
+- Discoverability: Whether the expected skill was loaded and activated when needed, avoiding decoys. <br>
+- Effectiveness: Whether the skill helped complete the user's goal and followed the expected workflow. <br>
+- Efficiency: Whether the skill avoided wasted tool calls and token usage. <br>
 
 Underlying evaluation signals used in this run: <br>
 - `security`: Unsafe operations, secret leakage, and unauthorized access. <br>
-- `skill_execution`: Whether the expected skill was selected, decoys were avoided, and the workflow executed. <br>
-- `skill_efficiency`: Tool-call productivity. <br>
+- `skill_execution`: Whether the expected skill was selected, decoys avoided, and the workflow executed. <br>
 - `accuracy`: Final-answer correctness against the reference answer. <br>
 - `goal_accuracy`: Whether the user's goal was achieved. <br>
 - `behavior_check`: Whether the expected workflow behavior was followed. <br>
-- `token_efficiency`: Actual uncached prompt plus completion token usage. <br>
+- `skill_efficiency`: Tool-call productivity (legacy wire id; routing scored under Discoverability). <br>
+- `token_efficiency`: Actual uncached prompt plus completion usage (50% of Efficiency). <br>
 
 
 
 ## Evaluation Results: <br>
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 85.7% | 80.2% |
-| Security | 76.9% → 100.0% (+23.1 points) | 61.5% → 100.0% (+38.5 points) |
-| Correctness | 26.2% → 89.2% (+63.0 points) | 24.6% → 76.9% (+52.3 points) |
-| Discoverability | 82.7% | 74.6% |
-| Effectiveness | 39.3% → 71.3% (+32.0 points) | 34.7% → 60.7% (+26.0 points) |
-| Efficiency | 85.0% | 89.0% |
+| Overall | 84.1% (uplift unavailable) | 82.0% (uplift unavailable) |
+| Security | 84.6% → 100.0% (+15.4 points) | 88.5% → 100.0% (+11.5 points) |
+| Correctness | 29.2% → 86.2% (+57.0 points) | 30.8% → 76.9% (+46.1 points) |
+| Discoverability | 79.6% (uplift unavailable) | 73.2% (uplift unavailable) |
+| Effectiveness | 37.6% → 67.5% (+29.9 points) | 34.3% → 67.1% (+32.8 points) |
+| Efficiency | 87.4% (uplift unavailable) | 92.8% (uplift unavailable) |
 
 ## Skill Version(s): <br>
 1.0.1 (source: frontmatter) <br>
