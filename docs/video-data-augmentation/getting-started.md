@@ -3,15 +3,15 @@
 Complete the shared [Getting Started Guide](../getting-started.md) through
 opening the Airflow UI, then return here to run Video Data Augmentation.
 
-The workflow processes each source video through two branches. The source
-branch is auto-labeled directly. In parallel, Cosmos Transfer creates the
+The workflow processes each source video through 2 branches. The source
+branch is auto-labeled directly. In parallel, video generation creates the
 requested variants, enabled Cosmos Evaluator gates filter them, and the passing
 variants enter a second auto-labeling branch. Each branch produces its own
 training export; the workflow does not merge them into one dataset manifest.
 
 > **OSMO: EXTERNAL ENDPOINTS ONLY:** Never use
 > `external_services: false` with `video_data_augmentation_dag_osmo`. Supply
-> every VLM, LLM, and Cosmos Transfer URL used by `cosmos`, `captioning`,
+> every VLM, LLM, and video generation URL used by `cosmos`, `captioning`,
 > `visual_qa`, and `reasoning`. Supply an external Cosmos Evaluator URL too
 > whenever an evaluator check is enabled. The OSMO manifest cannot deploy any
 > of these services.
@@ -23,34 +23,31 @@ training export; the workflow does not merge them into one dataset manifest.
 | Kubernetes | `video_data_augmentation_dag_k8s` | Internal or external inference services |
 | OSMO | `video_data_augmentation_dag_osmo` | External inference services; external evaluator when checks are enabled |
 
-Kubernetes batch stages request one GPU each, including when inference
-services are external. Internal mode also reserves one GPU for the shared
-language-model endpoint and two GPUs for Cosmos Transfer. Each enabled managed
-evaluator checker (hallucination, attribute verification, and physical
-plausibility) reserves one additional GPU.
+## Hardware Requirements
 
-| Mode | Evaluator configuration | Recommended capacity for normal branch overlap |
-| --- | --- | ---: |
-| Kubernetes, external inference services | External evaluator or all checks disabled | 2 GPUs |
-| Kubernetes, external inference services | One, two, or three managed checkers enabled | 3, 4, or 5 GPUs |
-| Kubernetes, internal inference services | External evaluator or all checks disabled | 5 GPUs |
-| Kubernetes, internal inference services | One, two, or three managed checkers enabled | 6, 7, or 8 GPUs |
-| OSMO, external endpoints | All evaluator endpoints external | Two concurrent 1-GPU job slots |
+Recommended GPUs on your workflow cluster:
 
-The Kubernetes recommendations reserve two GPUs for batch tasks so the source
-auto-labeling branch and Cosmos/output branch can overlap. Runs with less batch
-capacity serialize work and may leave parallel pods pending long enough to hit
-timeouts. Each OSMO task requests 1 GPU, 11 CPUs, 100 GiB RAM, and 100 GiB
-storage.
+| Component | **Kubernetes with external model endpoints** (`external_services: true`)<br>All checkers disabled | **Kubernetes with external model endpoints** (`external_services: true`)<br>3 checkers enabled | **Kubernetes with internal model services** (`external_services: false`)<br>All checkers disabled | **Kubernetes with internal model services** (`external_services: false`)<br>3 checkers enabled |
+| --- | :---: | :---: | :---: | :---: |
+| Processing steps (2, so the original-video and generated-video branches run at the same time) | 2 | 2 | 2 | 2 |
+| Language model | | | 1 | 1 |
+| Video generation | | | 2 | 2 |
+| Hallucination checker | | 1 | | 1 |
+| Attribute verification checker | | 1 | | 1 |
+| Physical-plausibility checker | | 1 | | 1 |
+| **Recommended total GPUs** | **2** | **5** | **5** | **8** |
 
-Before a run, check actual free GPUs, current consumers, model/cache storage,
-pod placement, and available Airflow pool slots.
+Each checker you disable removes 1 GPU. With fewer than 2 GPUs for processing steps, the branches run one at a time and pods can wait long enough to time out.
+
+**OSMO:** each task uses 1 GPU, 11 CPUs, 100 GiB RAM, and 100 GiB storage. Plan for 2 tasks at once.
+
+Before a run, check free GPUs, current consumers, model/cache storage, pod placement, and available Airflow pool slots.
 
 ## Run the Workflow
 
 1. **Upload Input Videos**:
 
-   Upload one source video or a directory of source videos to S3. Directory
+   Upload 1 source video or a directory of source videos to S3. Directory
    discovery supports `.mp4`, `.avi`, `.mov`, `.mkv`, and `.webm` files. For
    example:
 
@@ -60,8 +57,8 @@ pod placement, and available Airflow pool slots.
       intersection-002.mp4
    ```
 
-   A direct file path is also accepted. Start with one short video while
-   validating a new deployment because VDA runs two full labeling branches and
+   A direct file path is also accepted. Start with 1 short video while
+   validating a new deployment because VDA runs 2 full labeling branches and
    Cosmos video generation can take substantial GPU time.
 
 2. **Create a Starter Payload**:
@@ -87,20 +84,20 @@ pod placement, and available Airflow pool slots.
    cases, deployment-specific endpoints. Replace them; do not treat them as
    runnable defaults.
 
-   With external services, supply the VLM, LLM, and Cosmos Transfer URLs in
+   With external services, supply the VLM, LLM, and video generation URLs in
    `cosmos`, plus the endpoint fields in `captioning`, `visual_qa`, and
    `reasoning`. Placeholder defaults can pass validation but cannot serve a
    run.
 
    `video_data_augmentation_dag_osmo` supports external endpoints only. OSMO
-   cannot deploy the VLM, LLM, Cosmos Transfer, or managed Cosmos Evaluator
+   cannot deploy the VLM, LLM, video generation, or Cosmos Evaluator
    services. Supply all inference endpoints and, when any evaluator check is
    enabled, an external `cosmos.cosmos_evaluator_service_url`. Refer to
    [OSMO Payloads: External Endpoints Only](payload-guide.md#osmo-payloads-external-endpoints-only).
 
    The checked-in payload disables physical-plausibility evaluation while
    retaining hallucination and attribute-verification checks. Omit
-   `cosmos.cosmos_evaluator_service_url` to start the managed evaluator, or set
+   `cosmos.cosmos_evaluator_service_url` to start the evaluator, or set
    it to an existing Arbitrator root URL.
 
    VDA uses its bundled VQA question bank. The `visual_qa.question_bank_file`
@@ -124,8 +121,8 @@ pod placement, and available Airflow pool slots.
 
    In the existing Airflow installation, verify that the selected DAG is
    loaded and unpaused with no relevant import error. Kubernetes runs require
-   open slots in `default_pool`, `k8s_rtx6000_1`, and for external Cosmos
-   Transfer, `cosmos_transfer_3_service_pool`. OSMO uses `osmo_rtx6000_1`,
+   open slots in `default_pool`, `k8s_rtx6000_1`, and for external video
+   generation, `cosmos_transfer_3_service_pool`. OSMO uses `osmo_rtx6000_1`,
    `default_pool`, and `cosmos_transfer_3_service_pool`.
 
 4. **Start the Workflow from the UI**:
@@ -171,9 +168,9 @@ pod placement, and available Airflow pool slots.
    - `output/report.json`: Run report, when reporting completed.
 
    A successful run requires the expected Cosmos candidate directories, at
-   least one complete candidate, and non-empty output from both labeling and
+   least 1 complete candidate, and non-empty output from both labeling and
    training-export branches. Account separately for candidates rejected by an
-   evaluator or left incomplete. The current workflow does not combine the two
+   evaluator or left incomplete. The current workflow does not combine the 2
    branches into one final dataset manifest.
 
 ## Fine-Tuning and Calibration (Optional)

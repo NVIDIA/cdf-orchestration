@@ -9,11 +9,28 @@ opening the Airflow UI, then return here to run Event Video Generation.
 > Evaluator URL too whenever an evaluator check is enabled. The OSMO manifest
 > cannot deploy any of these services.
 
+## Hardware Requirements
+
+GPUs needed on your workflow cluster:
+
+| Component | **Kubernetes with external model endpoints** (`external_services: true`)<br>Both checkers disabled | **Kubernetes with external model endpoints** (`external_services: true`)<br>2 default checkers | **Kubernetes with internal model services** (`external_services: false`)<br>Both checkers disabled | **Kubernetes with internal model services** (`external_services: false`)<br>2 default checkers |
+| --- | :---: | :---: | :---: | :---: |
+| Processing steps (augmentation, detection and tracking, captioning, visual QA; run one at a time) | 1 | 1 | 1 | 1 |
+| Language model (VLM/LLM) | | | 1 | 1 |
+| Video generation (Cosmos 3 image-to-video) | | | 2 | 2 |
+| Attribute verification checker | | 1 | | 1 |
+| Physical-plausibility checker | | 1 | | 1 |
+| **Total GPUs** | **1** | **3** | **4** | **6** |
+
+This table covers Kubernetes runs. OSMO runs use external model endpoints only, as described at the top of this page.
+
+Before a run, check free GPUs, current consumers, model-cache storage, pod placement, and available Airflow pool slots.
+
 ## Run the Workflow
 
 1. **Construct and Upload Input Data**:
 
-   Upload one source image or a directory of source images to S3. Event Video
+   Upload 1 source image or a directory of source images to S3. Event Video
    Generation supports `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.tiff`, and
    `.webp` files. For example:
 
@@ -40,12 +57,12 @@ opening the Airflow UI, then return here to run Event Video Generation.
    For external services, replace the VLM, LLM, and image-to-video URLs in
    `cosmos`; the checked-in payload contains deployment-specific values. Also
    replace `cosmos.cosmos_evaluator_service_url` with your Arbitrator root URL,
-   or remove it to use the Kubernetes workflow's managed evaluator. Refer to the
+   or remove it to use the Kubernetes workflow's evaluator. Refer to the
    [Event Video Generation Payload Guide](payload-guide.md) for all fields and
    additional starter payloads.
 
    For `event_video_generation_dag_osmo`, use an external-services payload
-   only. Supply all three inference endpoint URLs. OSMO cannot deploy a managed
+   only. Supply all 3 inference endpoint URLs. OSMO cannot deploy a
    Cosmos Evaluator, so also supply an external Arbitrator URL whenever either
    evaluator check is enabled. Refer to
    [OSMO Payloads: External Endpoints Only](payload-guide.md#osmo-payloads-external-endpoints-only).

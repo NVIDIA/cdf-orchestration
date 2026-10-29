@@ -23,6 +23,7 @@ to add defects to clean images you already have.
   - [Simulate the Selected Components](#simulate-the-selected-components)
   - [Create Realistic Inspection Images](#create-realistic-inspection-images)
   - [Generate and Publish Defects](#generate-and-publish-defects)
+- [Hardware Requirements](#hardware-requirements)
 - [Running a Workflow](#running-a-workflow)
   - [Prepare the Payload](#prepare-the-payload)
   - [Check Service Access and Capacity](#check-service-access-and-capacity)
@@ -72,6 +73,20 @@ these classes, and every type you render needs a mapping; refer to
 In defect-only mode, you supply clean images that are already sorted into these
 classes.
 
+## Hardware Requirements
+
+Recommended GPU: NVIDIA RTX PRO 6000.
+
+| Stage | GPUs |
+| --- | --- |
+| Simulation | 1 per golden configuration (1 in the sample payloads) |
+| Image-edit | 1 per replica (the samples set 8) |
+| AnomalyGen | 2 per defect configuration, on 1 node. Configurations run in parallel when GPUs are free, and one at a time otherwise. |
+| **Minimum for a full run** | **2** on 1 node, since the stages run one after another |
+| **Recommended** | **4**, since with fewer image-edit replicas, golden generation is slow |
+
+All GPU tasks share one Airflow pool (`k8s_rtx6000_1`), sized to your cluster's GPU count. Work that doesn't fit waits its turn. To set the pool size, refer to [Check Service Access and Capacity](#check-service-access-and-capacity).
+
 ## Running a Workflow
 
 Before you start, complete the shared
@@ -88,8 +103,8 @@ first end-to-end test, use the full workflow below.
 | simulation | Simulation only | Use the full workflow payload and set `pipeline_mode` to `simulation`. |
 
 The full workflow sample uses the Artix PCB scene and selects **24 ICs and 14
-capacitors**, producing **38 golden images**. It requests **three defect
-images**: one IC bridge, one passive-component excess solder and one
+capacitors**, producing **38 golden images**. It requests **3 defect
+images**: 1 IC bridge, 1 passive-component excess solder and 1
 passive-component missing. The number of defect images you request is
 independent of the number of golden images; refer to
 [defect counts](payload-guide.md#defects-and-output-counts) to change it.
@@ -145,13 +160,13 @@ locations.
 
 - **Image-edit replicas.** The full and golden-only samples set
   `external_services: false`, so the DAG starts image-edit in the cluster. They
-  request **eight replicas**, each using one GPU. Set
+  request **8 replicas**, each using 1 GPU. Set
   `service_lifecycle.image_edit_service.replicas` to the number of GPUs
-  available for image-edit; on a four-GPU cluster, use `4` or less.
+  available for image-edit; on a 4-GPU cluster, use `4` or less.
 - **GPU pool.** Set `airflowPools.pools.k8s_rtx6000_1.slots` in
   `deploy/values.yaml` to the number of GPUs available for workflows, for
-  example `4` for four GPUs. Simulation, the image-edit replicas and AnomalyGen
-  all take GPUs from this pool, and each AnomalyGen job uses two.
+  example `4` for 4 GPUs. Simulation, the image-edit replicas and AnomalyGen
+  all take GPUs from this pool, and each AnomalyGen job uses 2.
 - **VLM endpoint.** For full and defect-only runs, use GPT-6 Astra. Replace the
   VLM placeholders in the full workflow and defect-only starter payloads with
   an endpoint that serves it; refer to

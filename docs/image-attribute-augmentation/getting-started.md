@@ -3,6 +3,21 @@
 Complete the shared [Getting Started Guide](../getting-started.md) through
 opening the Airflow UI, then return here to run Image Attribute Augmentation.
 
+## Hardware Requirements
+
+GPUs needed on your workflow cluster:
+
+| Component | **Kubernetes with external model endpoints** (`external_services: true`) | **Kubernetes with internal model services** (`external_services: false`) |
+| --- | :---: | :---: |
+| Processing steps and attribute verification checker (run on CPU) | 0 | 0 |
+| Language model (VLM/LLM) | | 1 |
+| Image-edit model | | 1 |
+| **Total GPUs** | **0** | **2** |
+
+Each extra VLM/LLM or image-edit replica you configure under `service_lifecycle` adds 1 GPU.
+
+Before a run, check free GPUs, current consumers, model-cache storage, pod placement, and available Airflow pool slots. Internal model services also need enough `ngc-model-cache` storage for their weights.
+
 ## Run the Workflow
 
 1. **Construct and Upload Input Data**:
@@ -31,14 +46,14 @@ opening the Airflow UI, then return here to run Image Attribute Augmentation.
 
    - Where the input images are stored in S3.
    - Where to write the output dataset.
-   - Whether to use external VLM, LLM, and image-edit endpoints or deploy one
-     shared VLM/LLM service and one image-edit service internally.
+   - Whether to use external VLM, LLM, and image-edit endpoints or deploy 1
+     shared VLM/LLM service and 1 image-edit service internally.
    - How many augmentations to attempt per person ID.
    - Which output attributes to generate and their distribution.
 
    To get started quickly, copy one of the
-   [starter payloads](payload-guide.md#quick-start-starter-payloads) (one for
-   in-cluster services and one for external endpoints), then set:
+   [starter payloads](payload-guide.md#quick-start-starter-payloads) (1 for
+   in-cluster services and 1 for external endpoints), then set:
 
    - `input_path` to `s3://<your-input-bucket>/<your-workflow>/input`
    - `output_directory` to your desired output path, for example
@@ -46,7 +61,7 @@ opening the Airflow UI, then return here to run Image Attribute Augmentation.
    - For external endpoints, the VLM, LLM, and image-edit URLs in `cosmos` and
      the VLM and LLM URLs in `event_and_person_attribute_search`
 
-   Both starters enable managed Cosmos attribute verification. Candidates that
+   Both starters enable Cosmos attribute verification. Candidates that
    fail generation or verification are excluded and listed in
    `<output_directory>/<run_id>/cosmos_skipped.json`.
 
