@@ -1,0 +1,183 @@
+version: 0.0.1
+deployment:
+  # From the DIG manifest (configs/smt/defect_image_generation_k8s_manifest.yaml).
+  dag_timeout: 14400
+  profiles:
+    k8s_gpu_task: &k8s_gpu_task
+      pool: k8s_rtx6000_1
+      pool_slots: 1
+      operator: K8sTaskOperator
+      configuration:
+        namespace: sdg-workflow
+        in_cluster: true
+        startup_timeout_seconds: 900
+        gpu: true
+        image_pull_secrets:
+        - ngc-docker-registry-secret
+    k8s_anomalygen_task:
+      <<: *k8s_gpu_task
+      pool_slots: 2
+  components:
+    tasks:
+      anomaly_generation:
+        enabled: true
+        container_image: nvcr.io/nvidia/cdf-anomalygen:1.2.0
+        deployment_profile: k8s_anomalygen_task
+        environment:
+          LOG_LEVEL: INFO
+          HOME: /tmp
+          PYTHONUNBUFFERED: '1'
+        secrets:
+          MULTISTORAGECLIENT_CONFIGURATION: '{{ var.value.multistorageclient_configuration_secret }}'
+          HF_TOKEN: '{{ var.value.hf_token }}'
+          VLM_API_KEY: "{{ var.value.get('vlm_api_key', '') or conn.nvcf_default.password }}"
+        volumes:
+        - name: anomalygen-checkpoints
+          mountPath: /workspace/cdf-anomalygen/checkpoints
+          subPath: checkpoints
+          persistentVolumeClaim:
+            claimName: ngc-model-cache
+        - name: dshm
+          mountPath: /dev/shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+        - name: anomalygen-work
+          mountPath: /work
+          emptyDir:
+            sizeLimit: 64Gi
+        configuration:
+          retries: 0
+          execution_timeout_seconds: 10800
+          # DIG execs run_pipeline [prepare, amg, generate, export, publish]. This wrapper runs the
+          # same command (forwarding SIGTERM to it), then, only when the payload sets evaluate,
+          # AnomalyGen evaluate after publish, then uploads what publish leaves behind into the same
+          # anomaly_generation/ folder: logs, generation CSV and timing, guardrail_blocked.csv, amg
+          # testcases and the resolved config (also on failure), masks/<image> for every exported
+          # image and kpi.json when evaluated (on success), and stage_timing.json last. These steps
+          # are best effort; the exit code is run_pipeline-s. No single quotes inside the program:
+          # shlex splits it.
+          container_command: |-
+            python -c '
+            import base64, datetime, json, os, pathlib, shutil, signal, subprocess, sys, traceback
+            cfg = json.loads(base64.b64decode(os.environ["ANOMALYGEN_CONFIG_B64"]))
+            evaluate = os.environ.get("AOI_EVALUATE", "0") == "1"
+            dest = cfg["staging"]["publish"]["output"].rstrip("/")
+            out = pathlib.Path(cfg["output"])
+            endpoints = json.loads(base64.b64decode(os.environ.get("ANOMALYGEN_ENDPOINTS_B64") or "W10="))
+            if endpoints:
+                key = os.environ.get("VLM_API_KEY")
+                if not key:
+                    raise SystemExit("VLM_API_KEY is required for configured AMG endpoints")
+                for endpoint in endpoints:
+                    endpoint["key"] = key
+                fd = os.open("/work/endpoints.yaml", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as registry:
+                    json.dump(endpoints, registry)
+            pathlib.Path("/work/run.yaml").write_text(json.dumps(cfg))
+            def now():
+                return datetime.datetime.now(datetime.timezone.utc)
+            def stamp(line):
+                try:
+                    head = line.split("[", 1)[1].split("|", 1)[0]
+                    t = datetime.datetime.strptime(str(now().year) + "-" + head, "%Y-%m-%d %H:%M:%S")
+                    return t.replace(tzinfo=datetime.timezone.utc)
+                except Exception:
+                    return now()
+            # This program is PID 1 (DIG execs run_pipeline instead), so it forwards SIGTERM and
+            # SIGINT to the running child: run_pipeline then stops torchrun and any served model.
+            children = []
+            def forward(signum, frame):
+                for child in children:
+                    if child.poll() is None:
+                        child.send_signal(signum)
+            signal.signal(signal.SIGTERM, forward)
+            signal.signal(signal.SIGINT, forward)
+            def stream(cmd, log=None):
+                fh = open(log, "w") if log else None
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+                children.append(proc)
+                for line in proc.stdout:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    if fh:
+                        fh.write(line)
+                    yield line
+                if fh:
+                    fh.close()
+                stream.rc = proc.wait()
+            started = now()
+            marks = []
+            for line in stream([sys.executable, "-u", "-m", "anomalygen.scripts.run_pipeline", "--config", "/work/run.yaml"]):
+                text = line.rstrip()
+                if "run_pipeline.py" in text and "] === " in text and text.endswith(" ==="):
+                    marks.append((text[:-4].rsplit("] === ", 1)[1], stamp(text)))
+            rc = stream.rc
+            pipeline_end = now()
+            stages = {}
+            for i, (name, start) in enumerate(marks):
+                end = marks[i + 1][1] if i + 1 < len(marks) else pipeline_end
+                stages[name] = round((end - start).total_seconds(), 1)
+            sdg = out / "sdg"
+            eval_rc = None
+            errors = []
+            files = []
+            finished = now()
+            # Everything after run_pipeline is best effort: the exit code stays run_pipeline-s.
+            try:
+                if rc == 0 and evaluate:
+                    print("[aoi] === evaluate (after publish) ===", flush=True)
+                    t0 = now()
+                    (out / "logs").mkdir(parents=True, exist_ok=True)
+                    cmd = [sys.executable, "-u", "-m", "anomalygen.scripts.texture.evaluate", "--gen_root", str(sdg),
+                           "--real_root", cfg["input"], "--recipe", cfg["recipe"], "--output_file", str(sdg / "kpi.json")]
+                    for _ in stream(cmd, out / "logs" / "evaluate.log"):
+                        pass
+                    eval_rc = stream.rc
+                    stages["evaluate"] = round((now() - t0).total_seconds(), 1)
+                finished = now()
+                extras = pathlib.Path("/work/extras")
+                extras.mkdir(parents=True, exist_ok=True)
+                def keep(src, rel):
+                    src = pathlib.Path(src)
+                    if src.is_file():
+                        target = extras / rel
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src, target)
+                # Diagnostics on success and failure alike.
+                for log in sorted((out / "logs").glob("*.log")):
+                    keep(log, "logs/" + log.name)
+                keep(sdg / "texture_ft_generation_result.csv", "generation/texture_ft_generation_result.csv")
+                keep(sdg / "timing_summary.json", "generation/timing_summary.json")
+                keep(sdg / "guardrail_blocked.csv", "generation/guardrail_blocked.csv")
+                keep(out / "amg" / "testcase.jsonl", "amg/testcase.jsonl")
+                keep(out / "pipeline_config.resolved.yaml", "pipeline_config.resolved.yaml")
+                # Masks belong to published images; kpi.json only when this run evaluated.
+                if rc == 0:
+                    manifest = out / "export" / "export_manifest.json"
+                    if manifest.is_file():
+                        m = json.loads(manifest.read_text())
+                        root = pathlib.Path(m.get("source_bucket") or sdg)
+                        for published, internal in m.get("images", {}).items():
+                            keep(root / "original_mask" / internal, "masks/" + published)
+                    if evaluate:
+                        keep(sdg / "kpi.json", "kpi.json")
+                from anomalygen.staging import store
+                store.configure()
+                files = sorted(p for p in extras.rglob("*") if p.is_file())
+                for p in files:
+                    try:
+                        store.upload(p, store.join(dest, p.relative_to(extras).as_posix()))
+                    except Exception as exc:
+                        errors.append(p.relative_to(extras).as_posix() + ": " + str(exc)[:300])
+                timing = {"exit_code": rc, "evaluate_exit_code": eval_rc, "started_at": started.isoformat(),
+                          "finished_at": finished.isoformat(), "total_seconds": round((finished - started).total_seconds(), 1),
+                          "stages_seconds": stages, "uploaded_files": len(files) - len(errors), "upload_errors": errors}
+                (extras / "stage_timing.json").write_text(json.dumps(timing, indent=1) + "\n")
+                store.upload(extras / "stage_timing.json", store.join(dest, "stage_timing.json"))
+                print("[aoi] uploaded " + str(len(files) - len(errors)) + " file(s) + stage_timing.json to " + dest + "; " + json.dumps(timing), flush=True)
+            except Exception:
+                print("[aoi] post-pipeline step failed (exit code stays run_pipeline-s " + str(rc) + "):", flush=True)
+                traceback.print_exc()
+            sys.exit(rc)
+            '
